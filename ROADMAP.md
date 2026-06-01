@@ -81,6 +81,11 @@ the rest of the app calls into.
 
 ## 3. Phased plan
 
+> **Build-ready detail:** each phase below has a step-by-step implementation spec
+> (work units, file paths, schema/migrations, API contracts, prompts, tests,
+> acceptance criteria) under [`docs/plans/`](./docs/plans/README.md).
+
+
 ### Phase 1.5 — Intelligence foundation 🟡 (highest leverage)
 Goal: make documents real AI context and consolidate AI behind one module.
 - ⬜ PDF/DOCX text extraction on upload; persist extracted text on the document

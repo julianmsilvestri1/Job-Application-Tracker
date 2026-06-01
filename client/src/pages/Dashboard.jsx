@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
+import { useToast } from '../components/Toaster.jsx';
 
 const PIPELINE = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
 
@@ -8,12 +9,13 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [recent, setRecent] = useState([]);
   const [providers, setProviders] = useState([]);
+  const { toast } = useToast();
 
   useEffect(() => {
-    api.getStats().then(setStats).catch(() => {});
-    api.getApplications().then((a) => setRecent(a.slice(0, 5))).catch(() => {});
-    api.getProviders().then(setProviders).catch(() => {});
-  }, []);
+    api.getStats().then(setStats).catch((e) => toast(e.message, 'error'));
+    api.getApplications().then((a) => setRecent(a.slice(0, 5))).catch((e) => toast(e.message, 'error'));
+    api.getProviders().then(setProviders).catch((e) => toast(e.message, 'error'));
+  }, [toast]);
 
   return (
     <div>

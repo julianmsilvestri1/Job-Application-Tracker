@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import AssistantModal from '../components/AssistantModal.jsx';
 import AutofillPanel from '../components/AutofillPanel.jsx';
+import { useToast } from '../components/Toaster.jsx';
 
 export default function Search() {
   const [q, setQ] = useState('');
@@ -14,22 +15,18 @@ export default function Search() {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [assistJob, setAssistJob] = useState(null);
   const [showAutofill, setShowAutofill] = useState(false);
-  const [toast, setToast] = useState('');
   const [providers, setProviders] = useState([]);
   const [selected, setSelected] = useState([]); // empty = all sources
+  const { toast } = useToast();
+  const notify = (m) => toast(m, 'success');
 
   useEffect(() => {
-    api.assistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch(() => {});
-    api.getProviders().then((p) => setProviders(p.filter((x) => x.configured))).catch(() => {});
-  }, []);
+    api.assistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch((e) => toast(e.message, 'error'));
+    api.getProviders().then((p) => setProviders(p.filter((x) => x.configured))).catch((e) => toast(e.message, 'error'));
+  }, [toast]);
 
   function toggleSource(id) {
     setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  }
-
-  function notify(msg) {
-    setToast(msg);
-    setTimeout(() => setToast(''), 1800);
   }
 
   async function doSearch(e) {
@@ -146,7 +143,6 @@ export default function Search() {
         <AssistantModal job={assistJob} aiEnabled={aiEnabled} onClose={() => setAssistJob(null)} />
       )}
       {showAutofill && <AutofillPanel onClose={() => setShowAutofill(false)} />}
-      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }

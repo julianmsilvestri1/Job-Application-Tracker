@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import AssistantModal from '../components/AssistantModal.jsx';
+import { useToast } from '../components/Toaster.jsx';
 
 const STATUSES = ['all', 'saved', 'applied', 'interviewing', 'offer', 'rejected', 'archived'];
 const NEXT_STATUS = ['saved', 'applied', 'interviewing', 'offer', 'rejected', 'archived'];
@@ -10,15 +11,14 @@ export default function Applications() {
   const [apps, setApps] = useState([]);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [assistJob, setAssistJob] = useState(null);
-  const [toast, setToast] = useState('');
+  const { toast } = useToast();
+  const notify = (m) => toast(m, 'success');
 
   function load() {
-    api.getApplications(filter === 'all' ? undefined : filter).then(setApps).catch(() => {});
+    api.getApplications(filter === 'all' ? undefined : filter).then(setApps).catch((e) => toast(e.message, 'error'));
   }
   useEffect(load, [filter]);
-  useEffect(() => { api.assistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch(() => {}); }, []);
-
-  function notify(msg) { setToast(msg); setTimeout(() => setToast(''), 1600); }
+  useEffect(() => { api.assistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch((e) => toast(e.message, 'error')); }, [toast]);
 
   async function changeStatus(app, status) {
     await api.updateApplication(app.id, { status });
@@ -99,7 +99,6 @@ export default function Applications() {
           onSaveCoverLetter={(text) => saveCoverLetter(assistJob, text)}
         />
       )}
-      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }

@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { useToast } from '../components/Toaster.jsx';
 
 export default function Profile() {
   const [profile, setProfile] = useState(null);
   const [experiences, setExperiences] = useState([]);
   const [education, setEducation] = useState([]);
   const [documents, setDocuments] = useState([]);
-  const [toast, setToast] = useState('');
-
-  function notify(msg) { setToast(msg); setTimeout(() => setToast(''), 1600); }
+  const { toast } = useToast();
+  const notify = (m) => toast(m, 'success');
 
   function load() {
     api.getProfile().then(({ profile, experiences, education }) => {
       setProfile(profile); setExperiences(experiences); setEducation(education);
-    }).catch(() => {});
-    api.getDocuments().then(setDocuments).catch(() => {});
+    }).catch((e) => toast(e.message, 'error'));
+    api.getDocuments().then(setDocuments).catch((e) => toast(e.message, 'error'));
   }
   useEffect(load, []);
 
@@ -31,8 +31,6 @@ export default function Profile() {
       <EducationCard items={education} reload={load} notify={notify} />
       <DocumentsCard documents={documents} reload={load} notify={notify} />
       <CustomFieldsCard profile={profile} setProfile={setProfile} notify={notify} />
-
-      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }

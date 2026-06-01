@@ -19,7 +19,7 @@ export default function AssistantModal({ job, aiEnabled, onClose, onSaveCoverLet
 
   // Load previously saved answers for a tracked application.
   useEffect(() => {
-    if (job.id) api.getAnswers(job.id).then(setSavedAnswers).catch(() => {});
+    if (job.id) api.getAnswers(job.id).then(setSavedAnswers).catch((e) => setWarning(e.message));
   }, [job.id]);
 
   async function genCover() {

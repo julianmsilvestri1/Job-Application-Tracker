@@ -5,6 +5,22 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import db from '../db.js';
+import { extractText } from '../services/documents/extract.js';
+
+// Columns returned in lists — excludes the (potentially large) extracted_text.
+const LIST_COLS =
+  'id, type, label, original_name, stored_name, mimetype, size, is_default, ' +
+  'extraction_status, extraction_error, text_chars, created_at';
+
+async function runExtraction(doc, filePath) {
+  const { text, status, error } = await extractText({ path: filePath, mimetype: doc.mimetype });
+  db.prepare(`
+    UPDATE documents
+    SET extracted_text = @text, extraction_status = @status,
+        extraction_error = @error, text_chars = @chars
+    WHERE id = @id
+  `).run({ id: doc.id, text, status, error, chars: text.length });
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
@@ -37,10 +53,10 @@ const upload = multer({
 const router = Router();
 
 router.get('/', (req, res) => {
-  res.json(db.prepare('SELECT * FROM documents ORDER BY created_at DESC').all());
+  res.json(db.prepare(`SELECT ${LIST_COLS} FROM documents ORDER BY created_at DESC`).all());
 });
 
-router.post('/', upload.single('file'), (req, res) => {
+router.post('/', upload.single('file'), async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const type = req.body.type || 'resume';
   const isDefault = req.body.is_default ? 1 : 0;
@@ -60,7 +76,36 @@ router.post('/', upload.single('file'), (req, res) => {
     size: req.file.size,
     is_default: isDefault,
   });
-  res.status(201).json(db.prepare('SELECT * FROM documents WHERE id = ?').get(info.lastInsertRowid));
+
+  const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(info.lastInsertRowid);
+  try {
+    await runExtraction(doc, path.join(uploadsDir, doc.stored_name));
+  } catch (err) {
+    next(err);
+    return;
+  }
+  res.status(201).json(db.prepare(`SELECT ${LIST_COLS} FROM documents WHERE id = ?`).get(doc.id));
+});
+
+// Extracted text for a single document (loaded on demand, not in lists).
+router.get('/:id/text', (req, res) => {
+  const doc = db.prepare('SELECT id, extracted_text, extraction_status FROM documents WHERE id = ?')
+    .get(Number(req.params.id));
+  if (!doc) return res.status(404).json({ error: 'Not found' });
+  res.json({ id: doc.id, status: doc.extraction_status, text: doc.extracted_text || '' });
+});
+
+// Retry extraction for a document that failed or predates this feature.
+router.post('/:id/reextract', async (req, res, next) => {
+  const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(Number(req.params.id));
+  if (!doc) return res.status(404).json({ error: 'Not found' });
+  try {
+    await runExtraction(doc, path.join(uploadsDir, doc.stored_name));
+  } catch (err) {
+    next(err);
+    return;
+  }
+  res.json(db.prepare(`SELECT ${LIST_COLS} FROM documents WHERE id = ?`).get(doc.id));
 });
 
 router.get('/:id/download', (req, res) => {

@@ -193,9 +193,17 @@ function EducationCard({ items, reload, notify }) {
   );
 }
 
+const EXTRACTION = {
+  done: { label: '✓ text ready', cls: 'applied' },
+  pending: { label: '… extracting', cls: 'saved' },
+  failed: { label: '⚠ no text', cls: 'rejected' },
+  unsupported: { label: '⚠ unsupported', cls: 'archived' },
+};
+
 function DocumentsCard({ documents, reload, notify }) {
   const [file, setFile] = useState(null);
   const [type, setType] = useState('resume');
+  const [preview, setPreview] = useState(null); // { id, text }
 
   async function upload() {
     if (!file) return;
@@ -204,31 +212,71 @@ function DocumentsCard({ documents, reload, notify }) {
     fd.append('type', type);
     fd.append('is_default', documents.filter((d) => d.type === type).length === 0 ? '1' : '');
     try {
-      await api.uploadDocument(fd); setFile(null); reload(); notify('Uploaded');
+      await api.uploadDocument(fd); setFile(null); reload(); notify('Uploaded & text extracted');
     } catch (e) { notify(e.message); }
+  }
+
+  async function togglePreview(id) {
+    if (preview?.id === id) { setPreview(null); return; }
+    try {
+      const r = await api.getDocumentText(id);
+      setPreview({ id, text: r.text || '(no text extracted)' });
+    } catch (e) { notify(e.message); }
+  }
+
+  async function reextract(id) {
+    try { await api.reextractDocument(id); reload(); notify('Re-extracted'); }
+    catch (e) { notify(e.message); }
   }
 
   return (
     <div className="card">
       <h3>Resume & documents</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Text is extracted from each upload so the AI can tailor letters and answers to your real CV.
+      </p>
       {documents.length === 0 && <p className="muted">No documents uploaded yet.</p>}
-      {documents.map((d) => (
-        <div key={d.id} className="autofill-item">
-          <div>
-            <div>{d.original_name} {d.is_default ? <span className="badge source">default {d.type}</span> : null}</div>
-            <div className="autofill-label">{d.type} · {(d.size / 1024).toFixed(0)} KB</div>
-          </div>
-          <div className="row">
-            <a className="btn small secondary" href={api.downloadUrl(d.id)}>Download</a>
-            {!d.is_default && (
-              <button className="btn small ghost" onClick={async () => { await api.setDefaultDocument(d.id); reload(); }}>
-                Set default
-              </button>
+      {documents.map((d) => {
+        const ex = EXTRACTION[d.extraction_status] || EXTRACTION.pending;
+        return (
+          <div key={d.id}>
+            <div className="autofill-item">
+              <div>
+                <div>
+                  {d.original_name} {d.is_default ? <span className="badge source">default {d.type}</span> : null}
+                  {' '}<span className={`badge ${ex.cls}`} title={d.extraction_error || ''}>{ex.label}</span>
+                </div>
+                <div className="autofill-label">
+                  {d.type} · {(d.size / 1024).toFixed(0)} KB
+                  {d.text_chars > 0 && ` · ${d.text_chars.toLocaleString()} chars`}
+                </div>
+              </div>
+              <div className="row">
+                {d.extraction_status === 'done' && (
+                  <button className="btn small ghost" onClick={() => togglePreview(d.id)}>
+                    {preview?.id === d.id ? 'Hide text' : 'Preview text'}
+                  </button>
+                )}
+                {(d.extraction_status === 'failed' || d.extraction_status === 'pending') && (
+                  <button className="btn small ghost" onClick={() => reextract(d.id)}>Re-extract</button>
+                )}
+                <a className="btn small secondary" href={api.downloadUrl(d.id)}>Download</a>
+                {!d.is_default && (
+                  <button className="btn small ghost" onClick={async () => { await api.setDefaultDocument(d.id); reload(); }}>
+                    Set default
+                  </button>
+                )}
+                <button className="btn small danger" onClick={async () => { await api.deleteDocument(d.id); reload(); }}>Delete</button>
+              </div>
+            </div>
+            {preview?.id === d.id && (
+              <pre style={{ whiteSpace: 'pre-wrap', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, fontSize: 12, maxHeight: 240, overflow: 'auto', margin: '0 0 12px' }}>
+                {preview.text}
+              </pre>
             )}
-            <button className="btn small danger" onClick={async () => { await api.deleteDocument(d.id); reload(); }}>Delete</button>
           </div>
-        </div>
-      ))}
+        );
+      })}
       <div className="divider" />
       <div className="row">
         <select value={type} onChange={(e) => setType(e.target.value)} style={{ width: 'auto' }}>
@@ -239,7 +287,7 @@ function DocumentsCard({ documents, reload, notify }) {
         <input type="file" accept=".pdf,.doc,.docx,.txt" onChange={(e) => setFile(e.target.files[0])} style={{ width: 'auto' }} />
         <button className="btn secondary" onClick={upload} disabled={!file}>Upload</button>
       </div>
-      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>PDF, DOC, DOCX or TXT · up to 10 MB.</p>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>PDF, DOCX or TXT extract text · DOC up to 10 MB.</p>
     </div>
   );
 }

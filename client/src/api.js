@@ -30,6 +30,8 @@ export const api = {
   uploadDocument: (formData) => request('/documents', { method: 'POST', body: formData }),
   setDefaultDocument: (id) => request(`/documents/${id}/default`, { method: 'PUT' }),
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
+  getDocumentText: (id) => request(`/documents/${id}/text`),
+  reextractDocument: (id) => request(`/documents/${id}/reextract`, { method: 'POST' }),
   downloadUrl: (id) => `${BASE}/documents/${id}/download`,
 
   // Jobs

@@ -45,6 +45,13 @@ export const api = {
   updateApplication: (id, b) => request(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify(b) }),
   deleteApplication: (id) => request(`/applications/${id}`, { method: 'DELETE' }),
 
+  // Answers (Q&A)
+  getAnswers: (applicationId) => request(`/applications/${applicationId}/answers`),
+  saveAnswerForApp: (applicationId, b) =>
+    request(`/applications/${applicationId}/answers`, { method: 'POST', body: JSON.stringify(b) }),
+  saveAnswer: (b) => request('/answers', { method: 'POST', body: JSON.stringify(b) }),
+  deleteAnswer: (id) => request(`/answers/${id}`, { method: 'DELETE' }),
+
   // Assistant
   assistantStatus: () => request('/assistant/status'),
   getAutofill: () => request('/assistant/autofill'),

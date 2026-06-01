@@ -84,4 +84,28 @@ router.delete('/:id', (req, res) => {
   res.status(204).end();
 });
 
+// --- Saved application answers (Q&A) --------------------------------------
+router.get('/:id/answers', (req, res) => {
+  const rows = db.prepare(
+    'SELECT * FROM application_answers WHERE application_id = ? ORDER BY created_at DESC',
+  ).all(Number(req.params.id));
+  res.json(rows);
+});
+
+router.post('/:id/answers', (req, res) => {
+  const id = Number(req.params.id);
+  const app = db.prepare('SELECT id, title, company FROM applications WHERE id = ?').get(id);
+  if (!app) return res.status(404).json({ error: 'Application not found' });
+  const b = req.body || {};
+  if (!b.question) return res.status(400).json({ error: 'A question is required.' });
+  const info = db.prepare(`
+    INSERT INTO application_answers (application_id, job_title, company, question, answer, source)
+    VALUES (@application_id, @job_title, @company, @question, @answer, @source)
+  `).run({
+    application_id: id, job_title: app.title, company: app.company,
+    question: b.question, answer: b.answer || '', source: b.source || 'manual',
+  });
+  res.status(201).json(db.prepare('SELECT * FROM application_answers WHERE id = ?').get(info.lastInsertRowid));
+});
+
 export default router;

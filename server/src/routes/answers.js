@@ -1,0 +1,28 @@
+import { Router } from 'express';
+import db from '../db.js';
+
+// Flat answer routes. App-scoped list/create live under /api/applications/:id/answers;
+// these handle inline (search-context) answers and deletion.
+const router = Router();
+
+// Save an answer not tied to a saved application (e.g. from search results).
+router.post('/', (req, res) => {
+  const b = req.body || {};
+  if (!b.question) return res.status(400).json({ error: 'A question is required.' });
+  const info = db.prepare(`
+    INSERT INTO application_answers (application_id, job_title, company, question, answer, source)
+    VALUES (@application_id, @job_title, @company, @question, @answer, @source)
+  `).run({
+    application_id: b.application_id || null,
+    job_title: b.job_title || '', company: b.company || '',
+    question: b.question, answer: b.answer || '', source: b.source || 'manual',
+  });
+  res.status(201).json(db.prepare('SELECT * FROM application_answers WHERE id = ?').get(info.lastInsertRowid));
+});
+
+router.delete('/:id', (req, res) => {
+  db.prepare('DELETE FROM application_answers WHERE id = ?').run(Number(req.params.id));
+  res.status(204).end();
+});
+
+export default router;

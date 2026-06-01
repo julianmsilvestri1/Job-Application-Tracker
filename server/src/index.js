@@ -10,6 +10,7 @@ import profileRouter from './routes/profile.js';
 import documentsRouter from './routes/documents.js';
 import jobsRouter from './routes/jobs.js';
 import applicationsRouter from './routes/applications.js';
+import answersRouter from './routes/answers.js';
 import assistantRouter from './routes/assistant.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +25,7 @@ app.use('/api/profile', profileRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/applications', applicationsRouter);
+app.use('/api/answers', answersRouter);
 app.use('/api/assistant', assistantRouter);
 
 // Serve the built client in production (npm run build && npm start).

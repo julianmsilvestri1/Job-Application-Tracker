@@ -15,10 +15,17 @@ export default function Search() {
   const [assistJob, setAssistJob] = useState(null);
   const [showAutofill, setShowAutofill] = useState(false);
   const [toast, setToast] = useState('');
+  const [providers, setProviders] = useState([]);
+  const [selected, setSelected] = useState([]); // empty = all sources
 
   useEffect(() => {
     api.assistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch(() => {});
+    api.getProviders().then((p) => setProviders(p.filter((x) => x.configured))).catch(() => {});
   }, []);
+
+  function toggleSource(id) {
+    setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }
 
   function notify(msg) {
     setToast(msg);
@@ -29,7 +36,9 @@ export default function Search() {
     e?.preventDefault();
     setLoading(true); setSearched(true);
     try {
-      const r = await api.searchJobs({ q, location, remote: String(remote) });
+      const params = { q, location, remote: String(remote) };
+      if (selected.length) params.sources = selected.join(',');
+      const r = await api.searchJobs(params);
       setJobs(r.jobs); setErrors(r.errors || []);
     } catch (err) {
       setErrors([{ source: 'app', message: err.message }]); setJobs([]);
@@ -75,6 +84,23 @@ export default function Search() {
             <label htmlFor="remote">Remote only</label>
           </div>
         </div>
+        {providers.length > 0 && (
+          <>
+            <label style={{ marginTop: 16 }}>Sources {selected.length === 0 && '(all)'}</label>
+            <div className="tag-input-tags">
+              {providers.map((p) => (
+                <span
+                  key={p.id}
+                  className="tag"
+                  onClick={() => toggleSource(p.id)}
+                  style={{ cursor: 'pointer', opacity: selected.length === 0 || selected.includes(p.id) ? 1 : 0.45 }}
+                >
+                  {selected.includes(p.id) ? '☑' : '☐'} {p.label}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
       </form>
 
       {errors.map((er, i) => (

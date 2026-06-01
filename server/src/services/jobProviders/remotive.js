@@ -1,22 +1,20 @@
 // Remotive provider. No API key required — returns remote jobs only.
 // Docs: https://remotive.com/api/remote-jobs
+import { fetchJson, stripHtml } from './util.js';
 
 export const id = 'remotive';
-export const label = 'Remotive (remote)';
+export const label = 'Remotive';
+export const requiresKey = false;
 
-// Always available; no credentials needed.
 export function isConfigured() {
-  return true;
+  return true; // no credentials needed
 }
 
-export async function search({ query = '', limit = 25 } = {}) {
+export async function search({ query = '', limit = 30 } = {}) {
   const params = new URLSearchParams({ limit: String(limit) });
   if (query) params.set('search', query);
 
-  const res = await fetch(`https://remotive.com/api/remote-jobs?${params.toString()}`);
-  if (!res.ok) throw new Error(`Remotive ${res.status}: ${await safeText(res)}`);
-  const data = await res.json();
-
+  const data = await fetchJson(`https://remotive.com/api/remote-jobs?${params}`);
   return (data.jobs || []).map((j) => ({
     externalId: String(j.id),
     source: id,
@@ -29,12 +27,4 @@ export async function search({ query = '', limit = 25 } = {}) {
     remote: true,
     postedAt: j.publication_date || null,
   }));
-}
-
-function stripHtml(s) {
-  return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-}
-
-async function safeText(res) {
-  try { return await res.text(); } catch { return ''; }
 }

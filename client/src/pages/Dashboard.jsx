@@ -58,17 +58,23 @@ export default function Dashboard() {
       </div>
 
       <div className="card">
-        <h3>Job sources</h3>
+        <div className="section-actions">
+          <h3 style={{ margin: 0 }}>Job sources</h3>
+          <span className="muted" style={{ fontSize: 13 }}>
+            {providers.filter((p) => p.configured).length} / {providers.length} active
+          </span>
+        </div>
         <div className="row">
           {providers.map((p) => (
-            <span key={p.id} className="badge source">
-              {p.label} {p.configured ? '✓' : '· add key'}
+            <span key={p.id} className="badge source" title={p.requiresKey ? 'Needs an API key' : 'No key required'}>
+              {p.configured ? '🟢' : '⚪'} {p.label}{p.requiresKey && !p.configured ? ' · add key' : ''}
             </span>
           ))}
         </div>
         <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>
-          Remotive works with no key. Add Adzuna / Jooble keys in <code>server/.env</code> to
-          unlock listings from Indeed, LinkedIn-adjacent boards and thousands more.
+          Remotive, The Muse, RemoteOK, Arbeitnow and Jobicy work with no key. Add
+          Adzuna, Jooble or USAJOBS keys in <code>server/.env</code> to unlock listings from
+          Indeed, LinkedIn-adjacent boards and federal jobs.
         </p>
       </div>
     </div>

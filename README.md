@@ -2,7 +2,7 @@
 
 A tailored, local-first portal for your job hunt:
 
-- 🔍 **Search** jobs across multiple boards at once (Adzuna, Jooble, Remotive) — Adzuna and Jooble aggregate listings from Indeed, LinkedIn-adjacent boards and thousands of other sites.
+- 🔍 **Search** jobs across **eight** boards at once — Adzuna, Jooble, USAJOBS, Remotive, The Muse, RemoteOK, Arbeitnow and Jobicy. Adzuna and Jooble aggregate listings from Indeed, LinkedIn-adjacent boards and thousands of other sites; five of the eight need **no API key at all**.
 - ⚡ **Autofill helper** — one-click copy of every profile field to paste into any application form.
 - ✍️ **AI assistant** — generate tailored cover letters and draft answers to application questions, grounded in your real profile.
 - 📋 **Tracker** — a pipeline (`saved → applied → interviewing → offer → rejected`) so you always know where each application stands.
@@ -38,14 +38,26 @@ npm run dev
 - Client (dev): http://localhost:5173
 - API: http://localhost:4000
 
-The app runs **with zero configuration** — Remotive needs no key and cover
-letters fall back to a built-in template. Each key you add unlocks more:
+The app runs **with zero configuration** — five job boards (Remotive, The Muse,
+RemoteOK, Arbeitnow, Jobicy) need no key, and cover letters fall back to a
+built-in template. Each key you add unlocks more:
 
 | Variable | Unlocks | Where to get it |
 |----------|---------|-----------------|
 | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Indeed / LinkedIn-adjacent / broad listings | https://developer.adzuna.com/ |
 | `JOOBLE_API_KEY` | Additional aggregated listings | https://jooble.org/api/about |
+| `USAJOBS_API_KEY`, `USAJOBS_EMAIL` | US federal jobs | https://developer.usajobs.gov/ |
+| `THE_MUSE_API_KEY` *(optional)* | Higher Muse rate limit | https://www.themuse.com/developers/api/v2 |
 | `ANTHROPIC_API_KEY` | AI-tailored cover letters & answers | https://console.anthropic.com/ |
+
+### How search works across boards
+
+Boards like Adzuna, Jooble and USAJOBS support server-side keyword/location
+search. Boards that don't (The Muse, RemoteOK, Arbeitnow, Jobicy) are fetched
+and **filtered locally** by your query. Every provider runs in parallel with a
+per-source timeout, results are de-duplicated and sorted by recency, and
+identical searches are cached for 5 minutes — so one slow or failing board
+never breaks or delays your search.
 
 ## Production build
 
@@ -64,7 +76,7 @@ npm start          # Express serves the API + the built client on :4000
 │   │   ├── db.js           # SQLite schema & connection
 │   │   ├── routes/         # profile, documents, jobs, applications, assistant
 │   │   └── services/
-│   │       ├── jobProviders/   # adzuna, jooble, remotive + aggregator
+│   │       ├── jobProviders/   # 8 boards + util + aggregator (cache, dedupe, timeouts)
 │   │       └── assistant.js    # Claude-backed cover letters / answers
 │   ├── uploads/            # uploaded resumes (gitignored)
 │   └── data/               # SQLite db file (gitignored)

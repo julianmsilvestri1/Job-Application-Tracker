@@ -14,7 +14,7 @@ router.get('/providers', (req, res) => {
 router.get('/search', async (req, res) => {
   const { q = '', location = '', remote, sources, page = '1' } = req.query;
   try {
-    const { jobs, errors } = await searchAll({
+    const { jobs, errors, sourcesQueried } = await searchAll({
       query: String(q),
       location: String(location),
       remote: remote === 'true' || remote === '1',
@@ -32,7 +32,7 @@ router.get('/search', async (req, res) => {
       trackedStatus: map.get(`${j.source}|${j.externalId}`) || null,
     }));
 
-    res.json({ jobs: annotated, errors });
+    res.json({ jobs: annotated, errors, sourcesQueried });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import db from '../db.js';
 import { getProfile } from './profile.js';
-import { generateCoverLetter, answerQuestion, aiEnabled } from '../services/assistant.js';
+import { coverLetter, answerQuestion, aiEnabled } from '../services/ai/orchestrator.js';
 
 const router = Router();
 
@@ -43,13 +43,10 @@ router.get('/autofill', (req, res) => {
 
 // Generate a tailored cover letter. Body: { jobId? , job? }
 router.post('/cover-letter', async (req, res) => {
-  const profile = getProfile();
-  const experiences = db.prepare('SELECT * FROM experiences ORDER BY sort_order, id DESC').all();
   const job = resolveJob(req.body);
   if (!job) return res.status(400).json({ error: 'Provide a job or jobId.' });
   try {
-    const result = await generateCoverLetter({ profile, experiences, job });
-    res.json(result);
+    res.json(await coverLetter({ job }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -59,12 +56,9 @@ router.post('/cover-letter', async (req, res) => {
 router.post('/answer', async (req, res) => {
   const { question } = req.body || {};
   if (!question) return res.status(400).json({ error: 'A question is required.' });
-  const profile = getProfile();
-  const experiences = db.prepare('SELECT * FROM experiences ORDER BY sort_order, id DESC').all();
   const job = resolveJob(req.body) || {};
   try {
-    const result = await answerQuestion({ profile, experiences, job, question });
-    res.json(result);
+    res.json(await answerQuestion({ job, question }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

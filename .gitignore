@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+
+# Local data & secrets
+.env
+*.local
+server/data/*.db
+server/data/*.db-*
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

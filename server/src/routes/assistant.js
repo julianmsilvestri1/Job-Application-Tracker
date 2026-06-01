@@ -1,0 +1,82 @@
+import { Router } from 'express';
+import db from '../db.js';
+import { getProfile } from './profile.js';
+import { generateCoverLetter, answerQuestion, aiEnabled } from '../services/assistant.js';
+
+const router = Router();
+
+router.get('/status', (req, res) => {
+  res.json({ aiEnabled: aiEnabled() });
+});
+
+// Flat field map for autofilling application forms (copy-to-clipboard helper).
+router.get('/autofill', (req, res) => {
+  const p = getProfile();
+  const [first = '', ...rest] = (p.full_name || '').split(' ');
+  const fields = {
+    'First name': first,
+    'Last name': rest.join(' '),
+    'Full name': p.full_name,
+    Email: p.email,
+    Phone: p.phone,
+    Location: p.location,
+    'LinkedIn URL': p.linkedin,
+    'GitHub URL': p.github,
+    Website: p.website,
+    Headline: p.headline,
+    'Years of experience': p.years_experience,
+    'Work authorization': p.work_authorization,
+    'Require sponsorship': p.needs_sponsorship ? 'Yes' : 'No',
+    'Desired salary': p.desired_salary,
+    Summary: p.summary,
+    Skills: (p.skills || []).join(', '),
+  };
+  // Merge any custom Q&A pairs the user saved.
+  Object.entries(p.custom_fields || {}).forEach(([k, v]) => { fields[k] = v; });
+
+  res.json({
+    fields: Object.entries(fields)
+      .filter(([, v]) => v !== '' && v != null)
+      .map(([label, value]) => ({ label, value: String(value) })),
+  });
+});
+
+// Generate a tailored cover letter. Body: { jobId? , job? }
+router.post('/cover-letter', async (req, res) => {
+  const profile = getProfile();
+  const experiences = db.prepare('SELECT * FROM experiences ORDER BY sort_order, id DESC').all();
+  const job = resolveJob(req.body);
+  if (!job) return res.status(400).json({ error: 'Provide a job or jobId.' });
+  try {
+    const result = await generateCoverLetter({ profile, experiences, job });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Answer an application question. Body: { question, jobId? , job? }
+router.post('/answer', async (req, res) => {
+  const { question } = req.body || {};
+  if (!question) return res.status(400).json({ error: 'A question is required.' });
+  const profile = getProfile();
+  const experiences = db.prepare('SELECT * FROM experiences ORDER BY sort_order, id DESC').all();
+  const job = resolveJob(req.body) || {};
+  try {
+    const result = await answerQuestion({ profile, experiences, job, question });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Accept either an inline job object or a saved application id.
+function resolveJob(body = {}) {
+  if (body.job && body.job.title) return body.job;
+  if (body.jobId) {
+    return db.prepare('SELECT * FROM applications WHERE id = ?').get(Number(body.jobId)) || null;
+  }
+  return null;
+}
+
+export default router;

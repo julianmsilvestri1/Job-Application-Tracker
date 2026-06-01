@@ -4,9 +4,9 @@ A tailored, local-first portal for your job hunt:
 
 - 🔍 **Search** jobs across **eight** boards at once — Adzuna, Jooble, USAJOBS, Remotive, The Muse, RemoteOK, Arbeitnow and Jobicy. Adzuna and Jooble aggregate listings from Indeed, LinkedIn-adjacent boards and thousands of other sites; five of the eight need **no API key at all**.
 - ⚡ **Autofill helper** — one-click copy of every profile field to paste into any application form.
-- ✍️ **AI assistant** — generate tailored cover letters and draft answers to application questions, grounded in your real profile.
+- ✍️ **AI assistant** — generate tailored cover letters and draft answers to application questions, grounded in your real profile **and the extracted text of your uploaded resume**. Answers persist per application; everything has a no-API-key template fallback.
 - 📋 **Tracker** — a pipeline (`saved → applied → interviewing → offer → rejected`) so you always know where each application stands.
-- 👤 **Profile** — store personal info, work history, education, skills, reusable custom answers, and upload your resume/documents. This data powers everything else.
+- 👤 **Profile** — store personal info, work history, education, skills, reusable custom answers, and upload your resume/documents (text auto-extracted for the AI). This data powers everything else.
 
 > **A note on Indeed & LinkedIn:** neither offers an open public job-search API, and scraping or programmatically auto-submitting applications on them violates their Terms of Service and is actively blocked. This app takes the compliant route: it pulls listings through legitimate aggregator APIs and **assists** your applications (autofill + AI drafting) rather than secretly submitting them for you. You stay in control and click "Apply" on the real site.
 
@@ -73,11 +73,13 @@ npm start          # Express serves the API + the built client on :4000
 ├── server/                 # Express + SQLite API
 │   ├── src/
 │   │   ├── index.js        # app entry
-│   │   ├── db.js           # SQLite schema & connection
-│   │   ├── routes/         # profile, documents, jobs, applications, assistant
+│   │   ├── db.js           # SQLite connection
+│   │   ├── migrations.js   # versioned schema migrations (PRAGMA user_version)
+│   │   ├── routes/         # profile, documents, jobs, applications, answers, assistant
 │   │   └── services/
 │   │       ├── jobProviders/   # 8 boards + util + aggregator (cache, dedupe, timeouts)
-│   │       └── assistant.js    # Claude-backed cover letters / answers
+│   │       ├── documents/      # resume text extraction (PDF/DOCX/TXT)
+│   │       └── ai/             # orchestrator: all Claude usage (cover letters, answers)
 │   ├── uploads/            # uploaded resumes (gitignored)
 │   └── data/               # SQLite db file (gitignored)
 ├── client/                 # React (Vite) frontend

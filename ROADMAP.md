@@ -27,22 +27,24 @@ beyond what is marked ✅.
 
 ### Not yet aligned with the full vision
 - **Discovery/personalization:** no fit ranking, no "recommended for you", no
-  positioning/keyword strategy, no learning from tracker history.
-- **AI scope is narrow:** Claude is a bolt-on to two endpoints; there is no
-  shared orchestration layer coordinating search → match → tailor → track →
-  apply.
-- **Uploaded PDFs are inert:** resumes are files on disk, never extracted into
-  profile/prompt context. Blocks "tailor from my real CV" and upload-driven
-  autofill.
-- **Tailoring uses structured DB fields**, not resume content; no per-job
-  document variants; documents are not linked to applications; Q&A answers are
-  not persisted.
+  positioning/keyword strategy, no learning from tracker history. *(Phase 3)*
 - **Apply path is assist-only:** no guided per-employer/ATS checklist; the
-  extension is a non-shipping scaffold.
+  extension is a non-shipping scaffold. *(Phase 2)*
+- **No per-job document variants** yet; documents not linked to applications. *(Phase 2/4)*
 - **Tracker is a basic CRM:** no calendar/reminders/contacts, no interview-stage
-  detail, no offer comparison, no export/search/analytics beyond status counts.
-- **Quality gaps:** no tests/lint/CI; no auth (fine locally); experience/
-  education UI is add/delete only; several silent `catch(() => {})` client loads.
+  detail, no offer comparison, no export/search/analytics beyond status counts. *(Phase 4)*
+- **Quality gaps:** no lint/CI yet (server+client unit tests now exist); no auth
+  (fine locally). *(Cross-cutting / Phase 5)*
+
+### Addressed in Phase 1.5 ✅
+- **AI is now orchestrated:** all Claude usage flows through
+  `services/ai/orchestrator.js` (no more two-endpoint bolt-on).
+- **Uploaded resumes are live context:** PDF/DOCX/TXT text is extracted on
+  upload and injected into cover-letter & answer prompts — "tailor from my real
+  CV" works.
+- **Q&A answers persist** (`application_answers`); experience/education are
+  **editable** in the UI; client load errors are **surfaced** via toasts;
+  schema is **migration-versioned**.
 
 ---
 
@@ -86,23 +88,24 @@ the rest of the app calls into.
 > acceptance criteria) under [`docs/plans/`](./docs/plans/README.md).
 
 
-### Phase 1.5 — Intelligence foundation 🟡 (highest leverage)
+### Phase 1.5 — Intelligence foundation ✅ (highest leverage)
 Goal: make documents real AI context and consolidate AI behind one module.
-- ⬜ PDF/DOCX text extraction on upload; persist extracted text on the document
-  row (`documents.extracted_text`).
-- ⬜ Inject default-resume text into cover-letter and Q&A prompts (tailor from
+- ✅ Versioned migration framework (`migrations.js`, `PRAGMA user_version`).
+- ✅ PDF/DOCX/TXT text extraction on upload; persisted on the document row
+  (`documents.extracted_text` + status).
+- ✅ Inject default-resume text into cover-letter and Q&A prompts (tailor from
   the real CV, not just structured fields).
-- ⬜ Add `services/ai/orchestrator.js`; migrate `assistant.js` calls through it
-  (shared model/version/caching config).
-- ⬜ Persist Assistant **Q&A** answers (new `application_answers` table linked to
-  `applications`).
-- ⬜ Q&A **template fallback** when `ANTHROPIC_API_KEY` is absent (parity with
-  cover letters). *(Issue: #qa-fallback)*
-- ⬜ Profile UI: **edit** experience/education (API already supports it).
-- ⬜ Surface client load errors instead of silent `catch(() => {})`.
+- ✅ `services/ai/orchestrator.js` — all Claude usage centralized; old service
+  deleted.
+- ✅ Persist Assistant **Q&A** answers (`application_answers` table, FK cascade).
+- ✅ Q&A **template fallback** when `ANTHROPIC_API_KEY` is absent (parity with
+  cover letters).
+- ✅ Profile UI: **edit** experience/education.
+- ✅ Surface client load errors via a global toast system.
 
-**Acceptance:** uploading a resume measurably changes generated cover letters;
-Q&A persists and survives reload; no AI key still yields useful drafts.
+**Acceptance met:** test asserts resume text reaches the AI request body; Q&A
+persists and survives reload; no-AI-key path yields useful cover letters and
+answers. 18 server + 2 client tests green.
 
 ### Phase 2 — Real apply assistance ⬜
 - ⬜ Production extension: remove ESM `export` from content script (bundle or

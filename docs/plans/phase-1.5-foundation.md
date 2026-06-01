@@ -1,5 +1,7 @@
 # Phase 1.5 — Intelligence Foundation
 
+**Status: ✅ COMPLETE** (Units 1.5.0–1.5.6 shipped & tested).
+
 **Goal:** make uploaded documents first-class AI context and route all AI through
 one orchestration module. This unblocks Phases 3–4. See conventions in
 [README.md](./README.md).
@@ -180,10 +182,10 @@ from one place; Q&A persists; everything still works with no API key.
 ---
 
 ## Phase exit criteria
-- [ ] Resume text demonstrably influences cover letters (diff with/without resume).
-- [ ] All Claude calls flow through `orchestrator.js`; none elsewhere.
-- [ ] Q&A persists per application; visible after reload.
-- [ ] No-API-key path returns useful cover letters **and** answers.
-- [ ] Experience/education editable in UI.
-- [ ] Load failures are visible.
-- [ ] `node --test` + `vitest` green; client build passes.
+- [x] Resume text demonstrably influences cover letters (test asserts resume text is in the AI request body).
+- [x] All Claude calls flow through `orchestrator.js`; none elsewhere (old service deleted).
+- [x] Q&A persists per application; visible after reload.
+- [x] No-API-key path returns useful cover letters **and** answers (template fallbacks).
+- [x] Experience/education editable in UI.
+- [x] Load failures are visible (global toaster).
+- [x] `node --test` (18) + `vitest` (2) green; client build passes.

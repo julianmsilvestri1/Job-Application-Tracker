@@ -130,8 +130,7 @@ export async function coverLetter({ job, db = defaultDb }) {
 export async function answerQuestion({ job = {}, question, db = defaultDb }) {
   const ctx = await buildCandidateContext({ includeResume: true, db });
   if (!aiEnabled()) {
-    // Enriched in Unit 1.5.4; basic guard until then.
-    return { text: '', source: 'template', warning: 'Set ANTHROPIC_API_KEY to generate answers.' };
+    return { text: templateAnswer(ctx.profile, job, question), source: 'template' };
   }
   const system =
     'You help a job candidate answer application questions truthfully and ' +
@@ -172,5 +171,65 @@ ${name}${profile.email ? `\n${profile.email}` : ''}${profile.phone ? `\n${profil
   );
 }
 
+// Heuristic answer when no API key: classify the question and compose from
+// profile facts. Always returns a usable, professional first-person draft.
+function templateAnswer(profile = {}, job = {}, question = '') {
+  const q = question.toLowerCase();
+  const name = profile.full_name || '';
+  const skills = (Array.isArray(profile.skills) ? profile.skills : []).slice(0, 6).join(', ');
+  const years = profile.years_experience;
+  const company = job.company || 'your team';
+  const role = job.title || 'this role';
+  const has = (...words) => words.some((w) => q.includes(w));
+
+  if (has('why do you want', 'why are you interested', 'why this company', 'why us', 'why work', 'interested in this')) {
+    return `I'm excited about ${role} at ${company} because it aligns with my background${
+      profile.headline ? ` as ${profile.headline}` : ''}. ${
+      profile.summary || 'I’m drawn to teams doing meaningful, high-quality work'} and I see a strong fit between ${
+      skills ? `my strengths in ${skills}` : 'my experience'} and what this role requires.`;
+  }
+  if (has('greatest strength', 'your strength', 'strengths', 'best at', 'good at')) {
+    return `My core strengths are ${skills || 'delivering results and collaborating across teams'}. ${
+      profile.summary || 'I consistently turn ambiguous problems into shipped, reliable solutions.'}`;
+  }
+  if (has('weakness', 'improve on', 'area of growth', 'development area')) {
+    return 'An area I actively work on is balancing depth with speed — I’ve learned to time-box exploration and ship iteratively, then refine based on feedback.';
+  }
+  if (has('why are you leaving', 'why leaving', 'why looking', 'leaving your current', 'reason for')) {
+    return `I’m looking for a role where I can take on more ownership and impact${
+      skills ? `, applying my strengths in ${skills}` : ''}. ${company} stood out as a place to do exactly that.`;
+  }
+  if (has('salary', 'compensation', 'expected pay', 'pay expectation', 'desired pay')) {
+    return profile.desired_salary
+      ? `My target compensation is around ${profile.desired_salary}, though I’m open to discussing the full package for the right opportunity.`
+      : 'I’m flexible on compensation and open to a fair offer based on the role’s scope and market rate.';
+  }
+  if (has('start date', 'availability', 'notice period', 'when can you start', 'available to start')) {
+    return 'I can typically start within two weeks of an offer, and I’m happy to align with your preferred timeline.';
+  }
+  if (has('sponsor', 'authorized to work', 'work authorization', 'visa', 'right to work')) {
+    if (profile.work_authorization) {
+      return `My work authorization status: ${profile.work_authorization}.${
+        profile.needs_sponsorship ? ' I would require visa sponsorship.' : ' I do not require sponsorship.'}`;
+    }
+    return profile.needs_sponsorship
+      ? 'I would require visa sponsorship for this role.'
+      : 'I am authorized to work and do not require sponsorship.';
+  }
+  if (has('relocat')) {
+    return `I’m open to relocation for the right opportunity${profile.location ? `; I’m currently based in ${profile.location}` : ''}.`;
+  }
+  if (has('tell me about yourself', 'about yourself', 'introduce yourself', 'who are you')) {
+    return `${name ? `I’m ${name}, ` : ''}${profile.headline || 'a results-driven professional'}${
+      years ? ` with ${years} years of experience` : ''}. ${
+      profile.summary || ''}${skills ? ` I specialize in ${skills}.` : ''}`.trim();
+  }
+  // Generic, still grounded in the candidate's facts.
+  return `${profile.summary || 'I bring a track record of delivering results and collaborating across teams.'}${
+    skills ? ` My relevant strengths include ${skills}.` : ''}${
+    years ? ` I have ${years} years of experience` : ''}${
+    company !== 'your team' ? `, and I’m confident I can contribute meaningfully at ${company}.` : '.'}`;
+}
+
 // Exposed for testing / reuse by later phases.
-export { complete, templateCoverLetter };
+export { complete, templateCoverLetter, templateAnswer };

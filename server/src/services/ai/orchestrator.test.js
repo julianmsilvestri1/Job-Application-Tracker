@@ -7,6 +7,7 @@ import {
   buildCandidateContext,
   coverLetter,
   answerQuestion,
+  templateAnswer,
   aiEnabled,
 } from './orchestrator.js';
 
@@ -92,10 +93,29 @@ test('aiEnabled reflects the env var', () => {
   assert.equal(aiEnabled(), true);
 });
 
-test('answerQuestion warns without a key (pre-1.5.4)', async () => {
+test('answerQuestion returns a useful template without a key (1.5.4)', async () => {
   delete process.env.ANTHROPIC_API_KEY;
   const db = seedDb();
-  const r = await answerQuestion({ job: {}, question: 'Why us?', db });
+  const r = await answerQuestion({ job: { title: 'Eng', company: 'Globex' }, question: 'Why do you want to work here?', db });
   assert.equal(r.source, 'template');
-  assert.ok(r.warning);
+  assert.ok(r.text.length > 0);
+  assert.match(r.text, /Globex/);
+});
+
+test('templateAnswer composes from profile facts by category', () => {
+  const profile = {
+    full_name: 'Jane Doe', headline: 'Senior React Engineer', years_experience: '8',
+    skills: ['React', 'Node'], summary: 'I ship reliable software.',
+    desired_salary: '$160k', work_authorization: 'US Citizen', needs_sponsorship: false,
+  };
+  const job = { title: 'Frontend Eng', company: 'Acme' };
+
+  assert.match(templateAnswer(profile, job, 'Why do you want to work here?'), /Acme/);
+  assert.match(templateAnswer(profile, job, 'What is your greatest strength?'), /React/);
+  assert.match(templateAnswer(profile, job, 'What are your salary expectations?'), /160k/);
+  assert.match(templateAnswer(profile, job, 'Do you require visa sponsorship?'), /do not require/i);
+  assert.match(templateAnswer(profile, job, 'Tell me about yourself'), /Jane Doe/);
+  assert.match(templateAnswer(profile, job, 'When can you start?'), /two weeks/i);
+  // Generic fallback still non-empty and grounded.
+  assert.ok(templateAnswer(profile, job, 'Describe a hard problem you solved').length > 0);
 });

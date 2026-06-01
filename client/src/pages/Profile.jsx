@@ -114,32 +114,12 @@ function SkillsCard({ profile, setProfile, notify }) {
   );
 }
 
-function ExperienceCard({ items, reload, notify }) {
-  const blank = { company: '', title: '', location: '', start_date: '', end_date: '', is_current: false, description: '' };
-  const [draft, setDraft] = useState(blank);
+const EXP_BLANK = { company: '', title: '', location: '', start_date: '', end_date: '', is_current: false, description: '' };
+
+function ExperienceFields({ draft, setDraft, idPrefix }) {
   const set = (k) => (e) => setDraft({ ...draft, [k]: e.target.value });
-
-  async function add() {
-    if (!draft.company && !draft.title) return;
-    await api.addExperience(draft); setDraft(blank); reload(); notify('Experience added');
-  }
-  async function del(id) { await api.deleteExperience(id); reload(); }
-
   return (
-    <div className="card">
-      <h3>Work experience</h3>
-      {items.map((x) => (
-        <div key={x.id} className="autofill-item">
-          <div>
-            <div>{x.title} {x.company && `· ${x.company}`}</div>
-            <div className="autofill-label">
-              {x.start_date} – {x.is_current ? 'Present' : x.end_date} {x.location && `· ${x.location}`}
-            </div>
-          </div>
-          <button className="btn small danger" onClick={() => del(x.id)}>Remove</button>
-        </div>
-      ))}
-      <div className="divider" />
+    <>
       <div className="grid-2">
         <Field label="Title"><input value={draft.title} onChange={set('title')} /></Field>
         <Field label="Company"><input value={draft.company} onChange={set('company')} /></Field>
@@ -147,47 +127,119 @@ function ExperienceCard({ items, reload, notify }) {
         <Field label="End"><input value={draft.end_date} onChange={set('end_date')} placeholder="Present" disabled={draft.is_current} /></Field>
       </div>
       <div className="checkbox-row" style={{ marginBottom: 12 }}>
-        <input id="cur" type="checkbox" checked={draft.is_current} onChange={(e) => setDraft({ ...draft, is_current: e.target.checked })} />
-        <label htmlFor="cur">I currently work here</label>
+        <input id={`${idPrefix}-cur`} type="checkbox" checked={draft.is_current}
+          onChange={(e) => setDraft({ ...draft, is_current: e.target.checked })} />
+        <label htmlFor={`${idPrefix}-cur`}>I currently work here</label>
       </div>
+      <Field label="Location"><input value={draft.location || ''} onChange={set('location')} /></Field>
       <Field label="Description"><textarea value={draft.description} onChange={set('description')} /></Field>
+    </>
+  );
+}
+
+function ExperienceCard({ items, reload, notify }) {
+  const [draft, setDraft] = useState(EXP_BLANK);
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState(EXP_BLANK);
+
+  async function add() {
+    if (!draft.company && !draft.title) return;
+    await api.addExperience(draft); setDraft(EXP_BLANK); reload(); notify('Experience added');
+  }
+  async function del(id) { await api.deleteExperience(id); reload(); }
+  function startEdit(x) { setEditingId(x.id); setEditDraft({ ...EXP_BLANK, ...x, is_current: !!x.is_current }); }
+  async function saveEdit() {
+    await api.updateExperience(editingId, editDraft); setEditingId(null); reload(); notify('Experience updated');
+  }
+
+  return (
+    <div className="card">
+      <h3>Work experience</h3>
+      {items.map((x) => editingId === x.id ? (
+        <div key={x.id} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 12 }}>
+          <ExperienceFields draft={editDraft} setDraft={setEditDraft} idPrefix={`exp-edit-${x.id}`} />
+          <div className="row">
+            <button className="btn small" onClick={saveEdit}>Save</button>
+            <button className="btn small ghost" onClick={() => setEditingId(null)}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div key={x.id} className="autofill-item">
+          <div>
+            <div>{x.title} {x.company && `· ${x.company}`}</div>
+            <div className="autofill-label">
+              {x.start_date} – {x.is_current ? 'Present' : x.end_date} {x.location && `· ${x.location}`}
+            </div>
+          </div>
+          <div className="row">
+            <button className="btn small ghost" onClick={() => startEdit(x)}>Edit</button>
+            <button className="btn small danger" onClick={() => del(x.id)}>Remove</button>
+          </div>
+        </div>
+      ))}
+      <div className="divider" />
+      <ExperienceFields draft={draft} setDraft={setDraft} idPrefix="exp-add" />
       <button className="btn secondary" onClick={add}>+ Add experience</button>
     </div>
   );
 }
 
-function EducationCard({ items, reload, notify }) {
-  const blank = { school: '', degree: '', field: '', start_date: '', end_date: '', gpa: '' };
-  const [draft, setDraft] = useState(blank);
+const EDU_BLANK = { school: '', degree: '', field: '', start_date: '', end_date: '', gpa: '' };
+
+function EducationFields({ draft, setDraft }) {
   const set = (k) => (e) => setDraft({ ...draft, [k]: e.target.value });
+  return (
+    <div className="grid-2">
+      <Field label="School"><input value={draft.school} onChange={set('school')} /></Field>
+      <Field label="Degree"><input value={draft.degree} onChange={set('degree')} placeholder="B.S." /></Field>
+      <Field label="Field of study"><input value={draft.field} onChange={set('field')} /></Field>
+      <Field label="GPA"><input value={draft.gpa} onChange={set('gpa')} /></Field>
+      <Field label="Start"><input value={draft.start_date} onChange={set('start_date')} /></Field>
+      <Field label="End"><input value={draft.end_date} onChange={set('end_date')} /></Field>
+    </div>
+  );
+}
+
+function EducationCard({ items, reload, notify }) {
+  const [draft, setDraft] = useState(EDU_BLANK);
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState(EDU_BLANK);
 
   async function add() {
     if (!draft.school) return;
-    await api.addEducation(draft); setDraft(blank); reload(); notify('Education added');
+    await api.addEducation(draft); setDraft(EDU_BLANK); reload(); notify('Education added');
   }
   async function del(id) { await api.deleteEducation(id); reload(); }
+  function startEdit(x) { setEditingId(x.id); setEditDraft({ ...EDU_BLANK, ...x }); }
+  async function saveEdit() {
+    await api.updateEducation(editingId, editDraft); setEditingId(null); reload(); notify('Education updated');
+  }
 
   return (
     <div className="card">
       <h3>Education</h3>
-      {items.map((x) => (
+      {items.map((x) => editingId === x.id ? (
+        <div key={x.id} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 12 }}>
+          <EducationFields draft={editDraft} setDraft={setEditDraft} />
+          <div className="row">
+            <button className="btn small" onClick={saveEdit}>Save</button>
+            <button className="btn small ghost" onClick={() => setEditingId(null)}>Cancel</button>
+          </div>
+        </div>
+      ) : (
         <div key={x.id} className="autofill-item">
           <div>
             <div>{x.degree} {x.field && `in ${x.field}`}</div>
             <div className="autofill-label">{x.school} · {x.start_date} – {x.end_date} {x.gpa && `· GPA ${x.gpa}`}</div>
           </div>
-          <button className="btn small danger" onClick={() => del(x.id)}>Remove</button>
+          <div className="row">
+            <button className="btn small ghost" onClick={() => startEdit(x)}>Edit</button>
+            <button className="btn small danger" onClick={() => del(x.id)}>Remove</button>
+          </div>
         </div>
       ))}
       <div className="divider" />
-      <div className="grid-2">
-        <Field label="School"><input value={draft.school} onChange={set('school')} /></Field>
-        <Field label="Degree"><input value={draft.degree} onChange={set('degree')} placeholder="B.S." /></Field>
-        <Field label="Field of study"><input value={draft.field} onChange={set('field')} /></Field>
-        <Field label="GPA"><input value={draft.gpa} onChange={set('gpa')} /></Field>
-        <Field label="Start"><input value={draft.start_date} onChange={set('start_date')} /></Field>
-        <Field label="End"><input value={draft.end_date} onChange={set('end_date')} /></Field>
-      </div>
+      <EducationFields draft={draft} setDraft={setDraft} />
       <button className="btn secondary" onClick={add}>+ Add education</button>
     </div>
   );

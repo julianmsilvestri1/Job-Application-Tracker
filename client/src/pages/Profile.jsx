@@ -130,9 +130,11 @@ function SkillsCard({ profile, setProfile, notify, notifyError }) {
 function PositioningCard({ profile, setProfile, notify, notifyError }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [appliedMessage, setAppliedMessage] = useState('');
 
   const fetchIt = useCallback(async (refresh = false) => {
     setLoading(true);
+    setAppliedMessage('');
     try {
       setData(await api.getPositioning(refresh));
     } catch (e) { notifyError(e); }
@@ -142,13 +144,17 @@ function PositioningCard({ profile, setProfile, notify, notifyError }) {
   async function applyHeadline(headline) {
     try {
       const saved = await api.updateProfile({ headline });
-      setProfile(saved); notify('Headline applied to your profile');
+      setProfile(saved);
+      setAppliedMessage('Headline applied to your profile');
+      notify('Headline applied to your profile');
     } catch (e) { notifyError(e); }
   }
   async function applySummary(summary) {
     try {
       const saved = await api.updateProfile({ summary });
-      setProfile(saved); notify('Summary applied to your profile');
+      setProfile(saved);
+      setAppliedMessage('Summary applied to your profile');
+      notify('Summary applied to your profile');
     } catch (e) { notifyError(e); }
   }
 
@@ -175,6 +181,7 @@ function PositioningCard({ profile, setProfile, notify, notifyError }) {
 
       {data && (
         <>
+          {appliedMessage && <div className="banner info">{appliedMessage}</div>}
           <div className="pos-group">
             <h4>Headline variants</h4>
             <div className="pos-list">

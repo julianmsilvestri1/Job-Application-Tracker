@@ -49,6 +49,7 @@ export default function Search() {
   async function doSearch(e) {
     e?.preventDefault();
     setLoading(true); setSearched(true); setSortByFit(false);
+    setJobs([]);
     try {
       const params = { q, location, remote: String(remote) };
       if (selected.length) params.sources = selected.join(',');
@@ -88,6 +89,7 @@ export default function Search() {
   // Expand a vague query into several board-friendly queries and merge results.
   async function improveSearch() {
     setImproving(true); setSearched(true);
+    setJobs([]);
     try {
       const plan = await api.planQueries(q);
       if (plan.rationale) toast(plan.rationale, 'info');

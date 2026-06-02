@@ -79,17 +79,31 @@ export function heuristicScore(candidate, job = {}) {
   return { score, reasons, gaps };
 }
 
+function compactBaseTitle(title) {
+  return String(title || 'Professional')
+    .replace(/\s+specializing in .+$/i, '')
+    .replace(/\s+\|\s+.+$/i, '')
+    .trim();
+}
+
+function headlineWithMissingSkills(baseTitle, skills) {
+  const lower = baseTitle.toLowerCase();
+  const missing = skills.filter((s) => !lower.includes(s.toLowerCase()));
+  const compact = compactBaseTitle(baseTitle);
+  return missing.length ? `${compact} specializing in ${missing.join(', ')}` : compact;
+}
+
 // Positioning guidance from structured facts (headline / skills / recent titles).
 export function heuristicPositioning({ profile = {}, experiences = [] } = {}) {
   const skills = (Array.isArray(profile.skills) ? profile.skills : []).filter(Boolean);
   const recentTitles = [...new Set(experiences.map((e) => (e.title || '').trim()).filter(Boolean))];
   const top = skills.slice(0, 4);
-  const base = profile.headline || recentTitles[0] || 'Professional';
+  const base = compactBaseTitle(profile.headline || recentTitles[0] || 'Professional');
 
   const headlines = unique([
     profile.headline,
+    headlineWithMissingSkills(base, top),
     top.length ? `${base} · ${top.slice(0, 3).join(' · ')}` : null,
-    top[0] ? `${base} specializing in ${top.slice(0, 2).join(' & ')}` : null,
     profile.years_experience ? `${base} with ${profile.years_experience} years' experience` : null,
   ]).slice(0, 4);
 

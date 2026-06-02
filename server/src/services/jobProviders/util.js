@@ -38,6 +38,27 @@ export function hash(prefix, s = '') {
   return `${prefix}${(h >>> 0).toString(36)}`;
 }
 
+// Canonical form of a posting URL for de-duplication: lowercase host (no www),
+// no trailing slash, no hash, common tracking params dropped. Returns '' for
+// unparseable input. The query is otherwise preserved (some boards put the job
+// id there), so distinct postings stay distinct.
+const TRACKING_PARAM = /^(utm_|ref$|source$|src$|trk$|recommended|gh_src$)/i;
+export function normalizeUrl(url = '') {
+  try {
+    const u = new URL(url);
+    u.hash = '';
+    for (const k of [...u.searchParams.keys()]) {
+      if (TRACKING_PARAM.test(k)) u.searchParams.delete(k);
+    }
+    const host = u.host.toLowerCase().replace(/^www\./, '');
+    const path = u.pathname.replace(/\/+$/, '');
+    const qs = u.searchParams.toString();
+    return `${host}${path}${qs ? `?${qs}` : ''}`;
+  } catch {
+    return '';
+  }
+}
+
 // Many free boards have no server-side keyword/location search, so we filter
 // the returned listings locally. Every query term must appear somewhere in the
 // job's text; location (when given) must appear in the job's location/text.

@@ -1,7 +1,7 @@
 // Aggregates all job-board providers behind one normalized interface.
 // Adding a board is as simple as dropping a module in this folder and
 // registering it here — nothing else in the app needs to change.
-import { localFilter } from './util.js';
+import { localFilter, normalizeUrl } from './util.js';
 import * as adzuna from './adzuna.js';
 import * as jooble from './jooble.js';
 import * as usajobs from './usajobs.js';
@@ -65,14 +65,26 @@ async function runProvider(provider, opts) {
   return jobs;
 }
 
-// Drop duplicates that show up across boards (same company + title).
-function dedupe(jobs) {
+// Drop duplicate postings. A job is considered a duplicate if it shares ANY
+// stable identity with one already kept:
+//   1. canonical URL              — same posting / same-board pagination overlap
+//   2. source:externalId          — same board posting
+//   3. company|title|location     — same posting surfaced by different boards
+// Including location avoids over-merging distinct roles that share a title.
+export function dedupe(jobs) {
   const seen = new Set();
   const out = [];
   for (const j of jobs) {
-    const key = `${j.company}|${j.title}`.toLowerCase().trim();
-    if (key === '|' || seen.has(key)) continue; // skip empties and dups
-    seen.add(key);
+    const keys = [];
+    const url = normalizeUrl(j.url);
+    if (url) keys.push(`u:${url}`);
+    if (j.externalId) keys.push(`x:${j.source}:${j.externalId}`);
+    const ctl = `${j.company}|${j.title}|${j.location || ''}`.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (ctl.replace(/\|/g, '').trim()) keys.push(`c:${ctl}`);
+
+    if (keys.length === 0) { out.push(j); continue; } // nothing to key on — keep
+    if (keys.some((k) => seen.has(k))) continue;
+    keys.forEach((k) => seen.add(k));
     out.push(j);
   }
   return out;

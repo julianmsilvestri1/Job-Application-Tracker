@@ -1,5 +1,7 @@
 # Job Application Portal
 
+[![CI](https://github.com/julianmsilvestri1/job-application-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/julianmsilvestri1/job-application-tracker/actions/workflows/ci.yml)
+
 A tailored, local-first portal for your job hunt:
 
 - 🔍 **Search** jobs across **eight** boards at once — Adzuna, Jooble, USAJOBS, Remotive, The Muse, RemoteOK, Arbeitnow and Jobicy. Adzuna and Jooble aggregate listings from Indeed, LinkedIn-adjacent boards and thousands of other sites; five of the eight need **no API key at all**.

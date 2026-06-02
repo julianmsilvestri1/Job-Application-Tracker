@@ -37,6 +37,8 @@ export default function Search() {
   async function doSearch(e) {
     e?.preventDefault();
     setLoading(true); setSearched(true);
+    setJobs([]);
+    setFitOpen({});
     try {
       const params = { q, location, remote: String(remote), rank: 'true' };
       if (selected.length) params.sources = selected.join(',');
@@ -50,6 +52,8 @@ export default function Search() {
 
   async function improveSearch() {
     setPlanning(true); setLoading(true); setSearched(true);
+    setJobs([]);
+    setFitOpen({});
     try {
       const plan = await api.planQueries({ intent: q || 'Find strong-fit roles for me' });
       setPlanned(plan);

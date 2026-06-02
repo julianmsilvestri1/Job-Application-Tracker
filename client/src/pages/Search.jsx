@@ -26,6 +26,7 @@ export default function Search() {
   const visibleJobs = sortJobs(jobs, sortByFit);
 
   useEffect(() => {
+    setSortByFit(true);
     api.assistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch((e) => toast(e.message, 'error'));
     api.getProviders().then((p) => setProviders(p.filter((x) => x.configured))).catch((e) => toast(e.message, 'error'));
   }, [toast]);

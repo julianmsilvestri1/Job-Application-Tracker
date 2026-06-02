@@ -1,6 +1,6 @@
 // Jobicy provider. Free, no key — remote jobs across many industries.
 // Docs: https://jobicy.com/jobs-rss-feed#api
-import { fetchJson, stripHtml, formatSalary } from './util.js';
+import { fetchJson, stripHtml, formatSalary, significantTerms } from './util.js';
 
 export const id = 'jobicy';
 export const label = 'Jobicy';
@@ -13,9 +13,10 @@ export function isConfigured() {
 
 export async function search({ query = '' } = {}) {
   const params = new URLSearchParams({ count: '50' });
-  // Jobicy accepts a single keyword tag; we still filter locally afterwards.
-  const firstTerm = query.trim().split(/\s+/)[0];
-  if (firstTerm) params.set('tag', firstTerm);
+  // Jobicy takes a single `tag`; send the 1–2 most significant terms (not just
+  // the first word, which is often a seniority modifier). localFilter refines.
+  const tags = significantTerms(query, 2);
+  if (tags.length) params.set('tag', tags.join(' '));
 
   const data = await fetchJson(`https://jobicy.com/api/v2/remote-jobs?${params}`);
   return (data.jobs || []).map((j) => ({

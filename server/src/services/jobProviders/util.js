@@ -78,3 +78,16 @@ export function localFilter(jobs, { query = '', location = '' } = {}) {
 export function looksRemote(...parts) {
   return /remote|anywhere|work from home|wfh/i.test(parts.join(' '));
 }
+
+// The most specific search terms, for boards that take a single keyword/tag.
+// Drops seniority/filler words and prefers longer, more distinctive terms
+// (e.g. "react native" over "senior"). Local filtering still enforces the rest.
+const STOPWORDS = new Set([
+  'senior', 'junior', 'lead', 'staff', 'principal', 'sr', 'jr', 'mid', 'entry',
+  'the', 'a', 'an', 'of', 'and', 'or', 'in', 'at', 'for', 'with', 'to', 'remote',
+]);
+export function significantTerms(query = '', max = 2) {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean).filter((t) => !STOPWORDS.has(t));
+  terms.sort((a, b) => b.length - a.length);
+  return terms.slice(0, max);
+}

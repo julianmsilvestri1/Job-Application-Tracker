@@ -22,7 +22,14 @@ On first setup or after lockfile changes: `npm run install:all` (root + `server/
 
 ### Lint / tests
 
-This repo has **no** ESLint, Prettier, or automated test scripts in `package.json`. Validate with `npm run build` and manual/API checks.
+- **Lint:** `npm run lint` (ESLint flat config, `--max-warnings 0`).
+- **Tests:** `npm test` (root) runs server `node --test` + client `vitest run`.
+- **Build:** `npm run build` (client production bundle).
+- **CI:** `.github/workflows/ci.yml` runs install → lint → test → build on Node 20 & 22.
+
+Server tests run against `better-sqlite3(':memory:')` with migrations applied;
+client tests use `vitest` + `jsdom` + Testing Library (fetch/API mocked). No
+network needed in tests.
 
 ### Non-obvious notes
 

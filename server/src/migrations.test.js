@@ -23,7 +23,10 @@ test('runMigrations brings a fresh db to the latest version', () => {
   assert.equal(db.pragma('user_version', { simple: true }), migrations.length);
 
   const tables = tableNames(db);
-  for (const t of ['profile', 'experiences', 'education', 'documents', 'applications', 'application_answers']) {
+  for (const t of [
+    'profile', 'experiences', 'education', 'documents', 'applications',
+    'application_answers', 'job_scores', 'search_preferences',
+  ]) {
     assert.ok(tables.includes(t), `expected table ${t}`);
   }
 });
@@ -43,5 +46,17 @@ test('migration 2 adds extraction columns to documents', () => {
   const cols = db.prepare('PRAGMA table_info(documents)').all().map((c) => c.name);
   for (const c of ['extracted_text', 'extraction_status', 'extraction_error', 'text_chars']) {
     assert.ok(cols.includes(c), `expected documents.${c}`);
+  }
+});
+
+test('phase 3 migration seeds search preferences and job score cache', () => {
+  const db = freshDb();
+  runMigrations(db);
+  const prefs = db.prepare('SELECT * FROM search_preferences WHERE id = 1').get();
+  assert.ok(prefs);
+  assert.equal(prefs.remote_only, 0);
+  const scoreCols = db.prepare('PRAGMA table_info(job_scores)').all().map((c) => c.name);
+  for (const c of ['job_key', 'profile_hash', 'score', 'reasons', 'gaps']) {
+    assert.ok(scoreCols.includes(c), `expected job_scores.${c}`);
   }
 });

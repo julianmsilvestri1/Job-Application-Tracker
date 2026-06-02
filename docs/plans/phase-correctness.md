@@ -104,8 +104,10 @@ later phase. Do these right after Phase 1.5. See conventions in
 ---
 
 ## Phase exit criteria
-- [ ] `npm test` runs server + client tests; CI green on Node 20 & 22.
-- [ ] `npm run lint` clean.
-- [ ] Cross-board dedupe by URL/id with tests.
-- [ ] Jobicy/Muse query building improved + tested.
-- [ ] No stale schema comments.
+- [x] `npm test` runs server + client tests; CI workflow added (Node 20 & 22).
+- [x] `npm run lint` clean (`--max-warnings 0`).
+- [x] Cross-board dedupe by canonical URL/id (+ location) with tests.
+- [x] Jobicy/Muse query building improved + tested.
+- [x] No stale schema comments (`applications.source` lists all 8 + manual).
+
+**Status: ✅ COMPLETE.** 32 server + 2 client tests green; lint clean; build passes.

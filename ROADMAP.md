@@ -135,11 +135,12 @@ answers. 18 server + 2 client tests green.
 ### Phase 5 — Scale (optional) ⬜
 - ⬜ Auth + multi-device sync if single-machine SQLite is outgrown.
 
-### Cross-cutting — Correctness & quality ⬜
-- ⬜ De-dupe by stable URL/id (not company+title); revisit Jooble hash identity.
-- ⬜ Jobicy: pass **all** keywords / multiple tags, not just the first.
-- ⬜ Fix `db.js` `applications.source` comment (lists 4; code supports 8 + manual).
-- ⬜ Tests (Vitest/node:test), lint (ESLint), CI (GitHub Actions).
+### Cross-cutting — Correctness & quality ✅
+- ✅ De-dupe by canonical URL/id (+ location); Jooble id hashes the normalized link.
+- ✅ Jobicy sends the most significant terms; The Muse maps queries to categories.
+- ✅ `applications.source` comment lists all 8 + manual (fixed in migration baseline).
+- ✅ Tests (node:test + Vitest), ESLint flat config (`--max-warnings 0`), CI
+  (GitHub Actions, Node 20 & 22).
 
 ---
 

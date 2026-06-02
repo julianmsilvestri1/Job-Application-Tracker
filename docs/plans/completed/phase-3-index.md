@@ -1,10 +1,10 @@
 # Phase 3 — Execution Index & Build Plan
 
 This is the **execution index** for Phase 3 (Personalized Discovery). It turns the
-unit spec in [`phase-3-discovery.md`](./phase-3-discovery.md) into a concrete,
+unit spec in [`phase-3-discovery.md`](../phase-3-discovery.md) into a concrete,
 ordered build plan with the exact files, schema, endpoints, prompts, and tests
 that ship. Phase 1.5 and the cross-cutting correctness phase are complete; this
-plan assumes the [shared conventions](./README.md) (migrations, AI orchestration,
+plan assumes the [shared conventions](../README.md) (migrations, AI orchestration,
 template fallbacks, testing/CI).
 
 > Status legend: ✅ done · 🟡 in progress · ⬜ not started

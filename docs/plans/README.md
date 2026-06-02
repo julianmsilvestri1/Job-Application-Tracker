@@ -36,7 +36,10 @@ feeds the Phase 6 field resolver. See the
 [master plan](./master-plan-autonomous-apply.md) for the full sequencing, the
 technology pillars, and the unit specs.
 
-Phase 3 as-built detail: [`phase-3-index.md`](./phase-3-index.md).
+Phase 3 as-built detail: [`completed/phase-3-index.md`](./completed/phase-3-index.md).
+
+Expanded Phase 2/4/5 drafts from a superseded branch (reference only):
+[`supplements/`](./supplements/README.md).
 
 ---
 

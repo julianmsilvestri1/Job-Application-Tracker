@@ -110,7 +110,7 @@ conventions in [README.md](./README.md).
 ---
 
 ## Phase exit criteria — ✅ complete
-See [`phase-3-index.md`](./phase-3-index.md) for the as-built execution plan.
+See [`completed/phase-3-index.md`](./completed/phase-3-index.md) for the as-built execution plan.
 - [x] Jobs sortable by explainable fit score (AI + heuristic fallback).
 - [x] Dashboard "Recommended for you" driven by preferences/profile.
 - [x] Positioning suggestions actionable from Profile.

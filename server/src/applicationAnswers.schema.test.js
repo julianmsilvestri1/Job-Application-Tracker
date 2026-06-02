@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
-import { runMigrations } from '../migrations.js';
+import { runMigrations } from './migrations.js';
 
 // Exercises the application_answers schema + cascade behavior directly against
 // an in-memory DB (mirrors what the routes do, without booting Express).

@@ -23,8 +23,21 @@ test('runMigrations brings a fresh db to the latest version', () => {
   assert.equal(db.pragma('user_version', { simple: true }), migrations.length);
 
   const tables = tableNames(db);
-  for (const t of ['profile', 'experiences', 'education', 'documents', 'applications', 'application_answers']) {
+  for (const t of [
+    'profile', 'experiences', 'education', 'documents', 'applications',
+    'application_answers', 'job_scores', 'search_preferences',
+  ]) {
     assert.ok(tables.includes(t), `expected table ${t}`);
+  }
+});
+
+test('phase 3 migration creates job score cache and search preferences', () => {
+  const db = freshDb();
+  runMigrations(db);
+  assert.ok(db.prepare('SELECT * FROM search_preferences WHERE id = 1').get());
+  const scoreCols = db.prepare('PRAGMA table_info(job_scores)').all().map((c) => c.name);
+  for (const c of ['job_key', 'profile_hash', 'score', 'reasons', 'gaps']) {
+    assert.ok(scoreCols.includes(c), `expected job_scores.${c}`);
   }
 });
 

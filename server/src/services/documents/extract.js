@@ -1,6 +1,6 @@
 // Extract plain text from uploaded documents so the AI can read them.
-// Dispatches by mimetype; PDF via pdf-parse, DOCX via mammoth, TXT directly.
-// Legacy .doc (binary) is unsupported.
+// Dispatches by mimetype; PDF via unpdf (modern pdf.js), DOCX via mammoth,
+// TXT directly. Legacy .doc (binary) is unsupported.
 import fs from 'node:fs/promises';
 
 const MAX_CHARS = 50_000; // cap stored text to keep prompts/DB sane
@@ -21,11 +21,13 @@ function normalize(text) {
 export async function extractText({ path, mimetype }) {
   try {
     if (mimetype === 'application/pdf') {
-      // Import the library entry directly to avoid pdf-parse's debug harness.
-      const { default: pdfParse } = await import('pdf-parse/lib/pdf-parse.js');
+      // unpdf bundles a current pdf.js that handles modern PDFs (xref/object
+      // streams) — unlike the unmaintained pdf-parse it replaced.
+      const { getDocumentProxy, extractText: extractPdfText } = await import('unpdf');
       const buf = await fs.readFile(path);
-      const data = await pdfParse(buf);
-      return ok(data.text);
+      const pdf = await getDocumentProxy(new Uint8Array(buf));
+      const { text } = await extractPdfText(pdf, { mergePages: true });
+      return ok(text);
     }
     if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
       const { default: mammoth } = await import('mammoth');

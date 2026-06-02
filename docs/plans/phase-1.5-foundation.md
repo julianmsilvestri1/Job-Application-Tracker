@@ -39,8 +39,11 @@ from one place; Q&A persists; everything still works with no API key.
 ## Unit 1.5.1 — Document text extraction
 - **Objective:** extract text from uploaded resumes so AI can read them.
 - **Depends on:** 1.5.0.
-- **Packages:** `pdf-parse` (PDF), `mammoth` (DOCX). TXT read directly. (DOC
-  legacy binary: skip — mark `unsupported`.)
+- **Packages:** `unpdf` (PDF — modern bundled pdf.js; replaced the unmaintained
+  `pdf-parse`, which failed on xref/object-stream PDFs), `mammoth` (DOCX). TXT
+  read directly. (DOC legacy binary: rejected at upload.) Note: `unpdf`'s pdf.js
+  declares an *optional* `canvas` dep for rendering only — skipped via
+  `server/.npmrc` (`omit=optional`) so it's never installed; audit stays clean.
 - **Schema (migration #2):** `ALTER TABLE documents ADD COLUMN`
   - `extracted_text TEXT DEFAULT ''`
   - `extraction_status TEXT DEFAULT 'pending'`  (`pending|done|failed|unsupported`)

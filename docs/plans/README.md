@@ -18,6 +18,10 @@ implemented and shipped on its own.
 `1.5` → `correctness` → `3` → `2` → `4` → `5`. Within a phase, work units are
 numbered in dependency order. Each unit is sized to one PR.
 
+Phase 2, Phase 4, and Phase 5 now include expanded implementation structures:
+core units, optional innovation tracks, schemas, endpoint contracts, UI flows,
+AI prompts, test plans, acceptance criteria, and suggested commit boundaries.
+
 ---
 
 ## Shared conventions

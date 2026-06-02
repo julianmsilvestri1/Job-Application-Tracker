@@ -72,6 +72,103 @@ Plan + Autopilot** (layers 3–6). Those are Phase 6.
 
 ---
 
+## 2.5 Technology pillars — what makes this innovative, not just functional
+
+The plan below is sound, but "sound" is the floor. These seven engineering
+decisions turn the capability stack from *a CRUD app that calls an LLM* into a
+**private, self-improving, trustworthy autonomy engine**. Each is **local-first**,
+**degrades gracefully** (keeps today's heuristic when the new capability is
+unavailable), and is **reused across phases** rather than bolted onto one.
+
+> Design rule: an innovation only earns its place if it (a) makes a task cheaper
+> *or* more reliable *or* more private, and (b) has a deterministic fallback so
+> the product never hard-depends on it. Every pillar below meets that bar.
+
+### P1 — A unified local semantic layer *(the highest-leverage idea)*
+Today's fit scoring, dedupe, and field matching each use ad-hoc string
+heuristics. Replace them with **one** in-process embedding model + vector index
+that powers four features at once:
+
+| Consumer | Today | With the semantic layer |
+|----------|-------|-------------------------|
+| Fit scoring (3.1) | keyword overlap | cosine(résumé⃗, JD⃗) — true semantic match; AI explains on top |
+| Field resolution (6.1) | synonym table | nearest-neighbour of field-label⃗ vs vault-key⃗ — instant, offline |
+| Cross-board dedupe (correctness) | URL/title key | catch reworded near-duplicate postings |
+| Answer reuse (6.1) | — | "answered something like this before?" → retrieve closest past answer |
+
+- **Tech:** [`@xenova/transformers`](https://github.com/xenova/transformers.js)
+  (Transformers.js — ONNX runtime, runs **in-process, no API, no network**) with
+  a small sentence model (`all-MiniLM-L6-v2`, ~25 MB, 384-d) + **`sqlite-vec`**
+  for kNN search *inside the existing SQLite file*. A `vectors(content_hash,
+  embedding)` table embeds each string once.
+- **Why it's innovative:** the résumé never leaves the machine to be embedded,
+  it works with **zero API key**, and the same subsystem unifies four features
+  that would otherwise be four different hacks.
+- **Honest trade-off:** ~25 MB model + cold-start; gated behind a capability
+  flag with the current heuristic as fallback.
+
+### P2 — Accessibility-tree-first element targeting *(resilient autopilot)*
+ATS forms churn class names and DOM structure constantly, so CSS-selector field
+maps rot. The autopilot (6.3) locates fields the way a screen reader (and
+Playwright's locators) do: **ARIA role + accessible name + associated
+`<label>`**, then `name`/`autocomplete`/placeholder, and only *then* per-ATS CSS.
+Paired with a **`MutationObserver` fill loop** for dynamic React/Workday forms
+(wait for render → fill → re-apply after re-renders) and **shadow-DOM-aware**
+traversal (open roots; closed roots documented as a limit). More drift-resistant,
+and accessibility-correct as a side effect.
+
+### P3 — Field maps as versioned data + a self-healing loop
+Per-ATS maps live in the **database, not code** (versioned rows). Every fill
+records `(host, field_key, strategy, success)` telemetry; when a host's fill-rate
+drops (layout drift) the engine auto-falls back to the AX-tree/embedding resolver,
+flags the stale map, and **proposes an updated map from the successful
+resolutions**. The result is a *learned field-map cache* that gets cheaper and
+more accurate over time and can be corrected **without shipping a new extension
+build**.
+
+### P4 — Event-sourced apply runs + tamper-evident audit
+An `apply_run` is the **fold of its event log** (event sourcing): run state,
+audit trail, time-travel, and resumability all derive from one source of truth.
+Each event stores `hash = sha256(prev_hash + payload)` — a **hash chain** that
+makes "what did the bot do on my behalf?" verifiable and tamper-evident. This is
+what turns *"autonomy you can trust"* from a slogan into a property you can check.
+
+### P5 — A durable, idempotent apply queue *(never double-apply)*
+The batch queue (6.5) is a **SQLite-backed durable job queue** (no external
+broker) with a per-job **idempotency key = `job_key`**, exponential backoff, and
+a resumable state machine. It dedupes against the tracker and enforces a
+per-employer rate limit — so "apply to my top matches" can never silently submit
+twice or spam one company. A real autonomy hazard, solved at the data layer.
+
+### P6 — Privacy-first encrypted vault
+The Answer Vault holds sensitive PII (address, DOB, work authorization,
+demographics). Sensitive categories are **encrypted at rest** with a key from the
+OS keychain (or an app passphrase via `scrypt`), and a **redaction layer** scrubs
+PII from logs and audit detail. Local-first **and** encrypted is a real
+differentiator over cloud autofill tools that store your identity on their
+servers.
+
+### P7 — Smarter, cheaper AI orchestration
+The orchestrator already centralizes Claude with fallbacks. Phase 6 adds:
+- **Prompt caching** of the large, reused candidate-context block (résumé +
+  vault) via Anthropic `cache_control` → big cost/latency cut across the dozens
+  of field/essay calls per application.
+- **Deterministic-first, AI-last** resolution (P1) so most fields never hit the
+  model at all.
+- **Schema-validated tool-use with a one-shot repair loop** — invalid JSON is
+  re-asked against the schema before falling back.
+- **Calibrated confidence → routing:** sub-threshold answers (and *all* factual
+  categories) route to the human gate instead of being filled.
+- **Progressive fill:** canonical fields fill instantly; AI-resolved fields
+  stream in as they return, so the form visibly completes in real time.
+
+> These pillars are introduced incrementally — P2/P3 land with Phase 2's
+> extension, P1 retro-upgrades Phase 3's fit scoring and is required by 6.1,
+> P4/P5 are the spine of 6.2/6.5, and P6/P7 harden 6.0/6.4. Each Phase 6 unit
+> below names the pillar(s) it realizes.
+
+---
+
 ## 3. How the existing phases ladder into autonomy
 
 | Phase | Status | Role in "apply for me" |
@@ -115,6 +212,11 @@ human approval gate by default and opt-in auto-submit where eligible.
 ### Unit 6.0 — Answer Vault & profile completeness
 - **Objective:** turn scattered profile data into one queryable knowledge base,
   and tell the user exactly what's missing to apply autonomously.
+- **Innovation (P6, P1):** the vault is a typed, **versioned facts ledger** with
+  per-fact provenance + confidence + a resume **source span** (which line a fact
+  came from) for one-click verification; sensitive categories are **encrypted at
+  rest**; canonical export/import uses the **JSON Resume** open schema for
+  portability. Vault keys are embedded (P1) so the resolver can match by meaning.
 - **Depends on:** 1.5.x.
 - **Schema (migration):**
   ```sql
@@ -156,6 +258,13 @@ human approval gate by default and opt-in auto-submit where eligible.
 ### Unit 6.1 — Field resolver service
 - **Objective:** map **any** application form field to your best answer, with a
   confidence and provenance, and never fabricate facts.
+- **Innovation (P1, P7):** resolution is **deterministic-first, AI-last** — an
+  embedding nearest-neighbour against vault keys (P1) resolves most fields with
+  no model call; the LLM only handles genuinely novel labels, behind a
+  **schema-validated tool-use + repair loop** with **calibrated confidence
+  routing** (low-confidence and all factual categories → the human gate).
+  Resolved `(host, label) → key` mappings are cached, so each ATS field is only
+  ever AI-resolved once and the system gets cheaper over time.
 - **Depends on:** 6.0, 1.5.2 (orchestrator), 3.x (Q&A/positioning for free-text).
 - **Backend:** `services/apply/resolveField.js` + orchestrator task
   `resolveFields({ fields })`. Input field shape (normalized by the extension or
@@ -194,6 +303,11 @@ human approval gate by default and opt-in auto-submit where eligible.
 ### Unit 6.2 — Application plan & apply runs
 - **Objective:** compose and persist a complete, auditable plan for applying to
   one job — documents + resolved fields + the list of gaps.
+- **Innovation (P4):** an `apply_run` is an **event-sourced aggregate** — its
+  state is the fold of an append-only event log, giving audit, time-travel, and
+  crash-resumability for free. Each event is **hash-chained**
+  (`sha256(prev_hash + payload)`) so the record of what was done on the user's
+  behalf is tamper-evident.
 - **Depends on:** 6.1, 2.1 (doc↔app links), 4.3 (resume variants), 1.5 (cover).
 - **Schema (migration):**
   ```sql
@@ -237,6 +351,11 @@ human approval gate by default and opt-in auto-submit where eligible.
 ### Unit 6.3 — Extension autopilot (in-page execution)
 - **Objective:** the literal "fills in each application bucket" — the extension
   fills every resolvable field across a multi-page ATS form from a plan.
+- **Innovation (P2, P3, P7):** **accessibility-tree-first targeting** (ARIA
+  role + accessible name) instead of brittle CSS selectors, a
+  **`MutationObserver` fill loop** for dynamic React/Workday flows, and
+  **progressive fill** — canonical fields fill instantly while AI-resolved ones
+  stream in. Fill outcomes feed the **self-healing field-map telemetry** (P3).
 - **Depends on:** 2.4 (production extension + per-ATS field maps), 6.1, 6.2.
 - **Extension:** extend the Phase 2.4 content script:
   - **Extract:** read the live form into normalized fields (reusing the per-ATS
@@ -262,6 +381,12 @@ human approval gate by default and opt-in auto-submit where eligible.
 
 ### Unit 6.4 — Autonomy levels, approval gate & audit
 - **Objective:** make autonomy controllable and accountable.
+- **Innovation (P4):** the denylist + eligibility rules are **policy-as-code**
+  with **property-based invariants** as tests (e.g. *no denylisted host can ever
+  yield `auto_submit=1`*, checked over generated inputs with `fast-check`), so
+  the safety guarantee is proven, not just asserted. The review screen shows a
+  deterministic **submission diff** (exactly what values will be sent) sourced
+  from the hash-chained event log.
 - **Depends on:** 6.3.
 - **Schema (migration):**
   ```sql
@@ -292,6 +417,11 @@ human approval gate by default and opt-in auto-submit where eligible.
 
 ### Unit 6.5 — Autonomous apply queue (batch over the recommended feed)
 - **Objective:** the capstone — "apply to my best matches for me."
+- **Innovation (P5, P1):** a **durable, idempotent** SQLite-backed queue —
+  `job_key` idempotency keys + backoff + a resumable state machine guarantee
+  **no double-applies**; it dedupes against the tracker (semantic near-dup via
+  P1) and enforces a **per-employer rate limit** so a batch never spams one
+  company.
 - **Depends on:** 6.4, 3.1/3.2 (fit + recommended feed).
 - **Backend:** an apply **queue**: enqueue jobs (e.g. recommended jobs with
   `fit ≥ threshold`), then for each generate a plan (6.2) and tailor docs; status
@@ -324,8 +454,10 @@ human approval gate by default and opt-in auto-submit where eligible.
 
 ## 5. Cross-cutting data & API summary (end state)
 
-**New tables:** `answer_vault`, `apply_runs`, `apply_run_events`,
-`autonomy_policies` (Phase 6) on top of Phase 2/4 tables
+**New tables:** `answer_vault`, `apply_runs`, `apply_run_events` (hash-chained),
+`autonomy_policies`, `apply_queue` (durable/idempotent), plus the shared-tech
+tables `vectors` (content-hash → embedding, P1) and `field_maps` +
+`fill_telemetry` (versioned maps + self-healing, P3) — on top of Phase 2/4 tables
 (`application_documents`, `application_tasks`, `contacts`, document variants).
 
 **New orchestrator tasks (all with fallbacks, per the AI contract):**
@@ -381,10 +513,38 @@ applies — with you in control of the final click.**
 6. **Compliance & honesty.** Generated answers must be truthful; the system
    assists the user's own truthful application — it does not impersonate or
    deceive employers.
+7. **New-tech limits (kept honest).** Local embeddings (P1) add a ~25 MB model
+   download + cold-start and are a capability flag, not a hard dependency —
+   every consumer keeps its heuristic fallback. AX-tree targeting (P2) cannot
+   reach **closed** shadow roots. At-rest encryption (P6) protects the data file,
+   not a running process with the key loaded. None of these block the product;
+   they bound it.
 
 ---
 
-## 8. Sequencing summary
+## 8. Technology choices & rationale
+
+Concrete picks, why they win here, and the fallback if they're unavailable.
+
+| Pillar | Technology | Why this one | Fallback |
+|--------|-----------|--------------|----------|
+| P1 semantic layer | **Transformers.js** (`all-MiniLM-L6-v2`) + **`sqlite-vec`** | In-process, key-free, private; one model serves fit/dedupe/resolve/reuse; vectors live in the existing SQLite file | Keyword/synonym heuristics (today's code) |
+| P2 targeting | Browser **Accessibility API** (ARIA role + accessible name) + `MutationObserver` | Resilient to class/DOM churn; accessibility-correct; how Playwright locates | Per-ATS CSS field maps |
+| P3 self-healing | **DB-stored versioned field maps** + fill telemetry | Update maps without an extension release; data-driven drift detection | Static maps shipped in the extension |
+| P4 audit | **Event sourcing** + **SHA-256 hash chain** | One source of truth for state+audit; tamper-evident "what the bot did" | Plain event rows (no chain) |
+| P5 queue | **SQLite durable queue** + idempotency keys | No external broker; local-first; provably no double-applies | Synchronous one-at-a-time apply |
+| P6 privacy | **OS keychain / `scrypt`** at-rest encryption + redaction layer | Identity data never trusts a cloud; differentiator vs. SaaS autofill | Plaintext local SQLite (current) |
+| P7 orchestration | Anthropic **prompt caching** + **tool-use JSON** + repair loop | Cuts cost/latency on the reused context; forces valid structured output | Existing template/heuristic fallbacks |
+| Testing | **`fast-check`** property tests for safety invariants; **golden ATS DOM fixtures** | Proves the denylist/never-fabricate guarantees over generated inputs | Example-based unit tests |
+
+**Adoption order (incremental, each shippable alone):** P7 prompt-caching is a
+quick orchestrator win usable now; **P1 lands first in Phase 3's fit scoring**
+(retro-upgrade) and is then required by 6.1; **P2/P3 ship with Phase 2's
+extension**; **P4/P5** are the spine of Phase 6.2/6.5; **P6** guards 6.0.
+
+---
+
+## 9. Sequencing summary
 ```
 done:   1.5 ✅  →  correctness ✅  →  3 (discovery) ✅
 next:   2 (apply substrate: 2.1, 2.2, 2.4 field maps)

@@ -41,24 +41,24 @@ router.get('/autofill', (req, res) => {
   });
 });
 
-// Generate a tailored cover letter. Body: { jobId? , job? }
+// Generate a tailored cover letter. Body: { jobId? , job?, refresh? }
 router.post('/cover-letter', async (req, res) => {
   const job = resolveJob(req.body);
   if (!job) return res.status(400).json({ error: 'Provide a job or jobId.' });
   try {
-    res.json(await coverLetter({ job }));
+    res.json(await coverLetter({ job, refresh: Boolean(req.body?.refresh) }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Answer an application question. Body: { question, jobId? , job? }
+// Answer an application question. Body: { question, jobId? , job?, refresh? }
 router.post('/answer', async (req, res) => {
   const { question } = req.body || {};
   if (!question) return res.status(400).json({ error: 'A question is required.' });
   const job = resolveJob(req.body) || {};
   try {
-    res.json(await answerQuestion({ job, question }));
+    res.json(await answerQuestion({ job, question, refresh: Boolean(req.body?.refresh) }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -95,6 +95,23 @@ test('coverLetter uses in-memory cache on repeat calls', async () => {
   assert.equal(calls, 1);
 });
 
+test('refresh bypasses the cache (Regenerate)', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  const db = seedDb();
+  let calls = 0;
+  global.fetch = async () => {
+    calls += 1;
+    return { ok: true, json: async () => ({ content: [{ type: 'text', text: `letter ${calls}` }] }) };
+  };
+  const job = { title: 'Eng', company: 'Acme' };
+  await coverLetter({ job, db });                 // calls=1, caches
+  const again = await coverLetter({ job, db });   // served from cache
+  const fresh = await coverLetter({ job, db, refresh: true }); // bypass + recache
+  assert.equal(again.text, 'letter 1');
+  assert.equal(fresh.text, 'letter 2');
+  assert.equal(calls, 2);
+});
+
 test('answerQuestion falls back to template if the API errors', async () => {
   process.env.ANTHROPIC_API_KEY = 'test-key';
   const db = seedDb();

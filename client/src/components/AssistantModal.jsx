@@ -22,21 +22,21 @@ export default function AssistantModal({ job, aiEnabled, onClose, onSaveCoverLet
     if (job.id) api.getAnswers(job.id).then(setSavedAnswers).catch((e) => setWarning(e.message));
   }, [job.id]);
 
-  async function genCover() {
+  async function genCover(refresh = false) {
     setLoading(true); setWarning('');
     try {
-      const r = await api.generateCoverLetter(jobPayload);
+      const r = await api.generateCoverLetter({ ...jobPayload, refresh });
       setCoverLetter(r.text);
       if (r.warning) setWarning(r.warning);
     } catch (e) { setWarning(e.message); }
     setLoading(false);
   }
 
-  async function genAnswer() {
+  async function genAnswer(refresh = false) {
     if (!question.trim()) return;
     setLoading(true); setWarning('');
     try {
-      const r = await api.answerQuestion({ ...jobPayload, question });
+      const r = await api.answerQuestion({ ...jobPayload, question, refresh });
       setAnswer(r.text || '');
       setAnswerSource(r.source || 'ai');
       if (r.warning) setWarning(r.warning);
@@ -91,7 +91,7 @@ export default function AssistantModal({ job, aiEnabled, onClose, onSaveCoverLet
         {tab === 'cover' && (
           <>
             <div className="row" style={{ marginBottom: 12 }}>
-              <button className="btn" onClick={genCover} disabled={loading}>
+              <button className="btn" onClick={() => genCover(Boolean(coverLetter))} disabled={loading}>
                 {loading ? 'Writing…' : coverLetter ? 'Regenerate' : 'Generate cover letter'}
               </button>
               {coverLetter && (
@@ -146,8 +146,8 @@ export default function AssistantModal({ job, aiEnabled, onClose, onSaveCoverLet
                 placeholder="e.g. Why do you want to work here? / Describe a challenge you overcame."
               />
             </div>
-            <button className="btn" onClick={genAnswer} disabled={loading || !question.trim()}>
-              {loading ? 'Thinking…' : 'Draft an answer'}
+            <button className="btn" onClick={() => genAnswer(Boolean(answer))} disabled={loading || !question.trim()}>
+              {loading ? 'Thinking…' : answer ? 'Redraft answer' : 'Draft an answer'}
             </button>
             {answer && (
               <>

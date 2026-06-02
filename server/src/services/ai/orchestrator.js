@@ -136,7 +136,7 @@ async function complete({ system, user, maxTokens = 800, jsonSchema = null }) {
 
 // --- Tasks -----------------------------------------------------------------
 
-export async function coverLetter({ job, db = defaultDb }) {
+export async function coverLetter({ job, db = defaultDb, refresh = false }) {
   const ctx = await buildCandidateContext({ includeResume: true, db });
   if (!aiEnabled()) return { text: templateCoverLetter(ctx.profile, job), source: 'template' };
 
@@ -150,9 +150,12 @@ export async function coverLetter({ job, db = defaultDb }) {
     `=== JOB ===\nTitle: ${job.title}\nCompany: ${job.company}\n` +
     `Location: ${job.location || 'n/a'}\nDescription: ${(job.description || '').slice(0, 2500)}`;
 
+  // `refresh` (an explicit "Regenerate") bypasses the cache for a fresh result.
   const key = cacheKey('coverLetter', [ctx.text, job.title, job.company, job.location, job.description]);
-  const cached = getCached(key);
-  if (cached) return cached;
+  if (!refresh) {
+    const cached = getCached(key);
+    if (cached) return cached;
+  }
 
   try {
     const result = { text: await complete({ system, user, maxTokens: 900 }), source: 'ai' };
@@ -163,7 +166,7 @@ export async function coverLetter({ job, db = defaultDb }) {
   }
 }
 
-export async function answerQuestion({ job = {}, question, db = defaultDb }) {
+export async function answerQuestion({ job = {}, question, db = defaultDb, refresh = false }) {
   const ctx = await buildCandidateContext({ includeResume: true, db });
   if (!aiEnabled()) {
     return { text: templateAnswer(ctx.profile, job, question), source: 'template' };
@@ -178,8 +181,10 @@ export async function answerQuestion({ job = {}, question, db = defaultDb }) {
     `\n=== JOB ===\n${job.title || ''} at ${job.company || ''}\n\n` +
     `=== QUESTION ===\n${question}\n\nWrite the answer only.`;
   const key = cacheKey('answerQuestion', [ctx.text, question, job.title, job.company]);
-  const cached = getCached(key);
-  if (cached) return cached;
+  if (!refresh) {
+    const cached = getCached(key);
+    if (cached) return cached;
+  }
 
   try {
     const result = { text: await complete({ system, user, maxTokens: 500 }), source: 'ai' };

@@ -11,6 +11,7 @@ import {
   heuristicJobScore,
   positioning,
   planQueries,
+  templatePositioning,
   templateAnswer,
   aiEnabled,
   clearAiCache,
@@ -241,4 +242,16 @@ test('positioning fallback and query planning fallback are profile-specific', as
   assert.ok(pos.headlines.length > 0);
   assert.ok(pos.targetTitles.length > 0);
   assert.ok(plan.queries.some((q) => /React|Node|remote startup role/i.test(q.query)));
+});
+
+test('templatePositioning does not duplicate already-applied skill positioning', () => {
+  const pos = templatePositioning({
+    profile: {
+      headline: 'Senior React Engineer specializing in React, Node',
+      skills: ['React', 'Node', 'TypeScript'],
+      summary: 'I build products.',
+    },
+  });
+  assert.equal(pos.headlines[0], 'Senior React Engineer specializing in TypeScript');
+  assert.ok(!pos.headlines[0].includes('React, Node specializing'));
 });

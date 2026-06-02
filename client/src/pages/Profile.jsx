@@ -185,9 +185,11 @@ function PreferencesCard({ preferences, setPreferences, notify, notifyError }) {
 function PositioningCard({ profile, setProfile, notify, notifyError }) {
   const [positioning, setPositioning] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [appliedMessage, setAppliedMessage] = useState('');
 
   async function load(refresh = false) {
     setLoading(true);
+    setAppliedMessage('');
     try {
       setPositioning(await api.getPositioning(refresh));
     } catch (e) { notifyError(e); }
@@ -198,6 +200,7 @@ function PositioningCard({ profile, setProfile, notify, notifyError }) {
     try {
       const saved = await api.updateProfile(update);
       setProfile(saved);
+      setAppliedMessage(message);
       notify(message);
     } catch (e) { notifyError(e); }
   }
@@ -218,6 +221,7 @@ function PositioningCard({ profile, setProfile, notify, notifyError }) {
       ) : (
         <>
           {positioning.warning && <div className="banner">{positioning.warning}</div>}
+          {appliedMessage && <div className="banner info">{appliedMessage}</div>}
           <label>Headline variants</label>
           <div className="suggestion-list">
             {(positioning.headlines || []).map((headline) => (

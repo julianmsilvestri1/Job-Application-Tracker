@@ -487,26 +487,43 @@ export function templatePositioning(ctx = {}) {
   const baseTitle = profile.headline || ctx.experiences?.[0]?.title || 'Results-driven professional';
   const topSkills = skills.slice(0, 4);
   const skillPhrase = topSkills.length ? ` specializing in ${topSkills.join(', ')}` : '';
+  const skillHeadline = headlineWithMissingSkills(baseTitle, topSkills);
+  const compactHeadline = compactBaseTitle(baseTitle);
   const targetTitles = [
-    profile.headline,
+    compactHeadline,
     ctx.experiences?.[0]?.title,
     topSkills[0] && `${topSkills[0]} Specialist`,
     topSkills[1] && `${topSkills[1]} Consultant`,
   ].filter(Boolean);
   return {
     headlines: [
-      `${baseTitle}${skillPhrase}`,
-      topSkills.length ? `${baseTitle} | ${topSkills.slice(0, 3).join(' + ')}` : baseTitle,
-      `${baseTitle} focused on measurable business impact`,
-    ],
+      skillHeadline,
+      topSkills.length ? `${compactHeadline} | ${topSkills.slice(0, 3).join(' + ')}` : compactHeadline,
+      `${compactHeadline} focused on measurable business impact`,
+    ].filter((value, index, all) => all.indexOf(value) === index),
     targetTitles: [...new Set(targetTitles)].slice(0, 6),
     keywordStrategy: topSkills.length
       ? topSkills.map((skill) => `Use "${skill}" in resume bullets, search queries, and cover-letter proof points.`)
       : ['Add 5-8 concrete skills to your profile to unlock stronger keyword targeting.'],
     summaryRewrite: profile.summary
-      ? `${profile.summary} I bring a focused record of matching role requirements with practical execution and clear communication.`
-      : `I am a ${baseTitle.toLowerCase()}${skillPhrase} with a focus on practical execution, clear communication, and measurable results.`,
+      ? profile.summary.includes('matching role requirements')
+        ? profile.summary
+        : `${profile.summary} I bring a focused record of matching role requirements with practical execution and clear communication.`
+      : `I am a ${compactHeadline.toLowerCase()}${skillPhrase} with a focus on practical execution, clear communication, and measurable results.`,
   };
+}
+
+function headlineWithMissingSkills(baseTitle, skills) {
+  const lower = baseTitle.toLowerCase();
+  const missing = skills.filter((skill) => !lower.includes(skill.toLowerCase()));
+  return missing.length ? `${compactBaseTitle(baseTitle)} specializing in ${missing.join(', ')}` : compactBaseTitle(baseTitle);
+}
+
+function compactBaseTitle(baseTitle) {
+  return String(baseTitle || 'Results-driven professional')
+    .replace(/\s+specializing in .+$/i, '')
+    .replace(/\s+\|\s+.+$/i, '')
+    .trim();
 }
 
 function cleanQueryPlan(raw, ctx, intent) {

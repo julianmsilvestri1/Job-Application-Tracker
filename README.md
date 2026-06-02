@@ -7,6 +7,7 @@ A tailored, local-first portal for your job hunt:
 - 🔍 **Search** jobs across **eight** boards at once — Adzuna, Jooble, USAJOBS, Remotive, The Muse, RemoteOK, Arbeitnow and Jobicy. Adzuna and Jooble aggregate listings from Indeed, LinkedIn-adjacent boards and thousands of other sites; five of the eight need **no API key at all**.
 - ⚡ **Autofill helper** — one-click copy of every profile field to paste into any application form.
 - ✍️ **AI assistant** — generate tailored cover letters and draft answers to application questions, grounded in your real profile **and the extracted text of your uploaded resume**. Answers persist per application; everything has a no-API-key template fallback.
+- 🎯 **Personalized discovery** — score jobs by fit, explain strengths/gaps, save search preferences, get Dashboard recommendations, generate positioning suggestions, and expand vague searches with AI-assisted query planning.
 - 📋 **Tracker** — a pipeline (`saved → applied → interviewing → offer → rejected`) so you always know where each application stands.
 - 👤 **Profile** — store personal info, work history, education, skills, reusable custom answers, and upload your resume/documents (text auto-extracted for the AI). This data powers everything else.
 
@@ -19,7 +20,7 @@ A tailored, local-first portal for your job hunt:
 | Frontend | React + Vite + React Router             |
 | Backend  | Node.js + Express                       |
 | Storage  | SQLite (`better-sqlite3`), local file   |
-| AI       | Claude API (optional)                   |
+| AI       | Claude API (optional, with fallbacks)   |
 
 ## Getting started
 
@@ -50,7 +51,7 @@ built-in template. Each key you add unlocks more:
 | `JOOBLE_API_KEY` | Additional aggregated listings | https://jooble.org/api/about |
 | `USAJOBS_API_KEY`, `USAJOBS_EMAIL` | US federal jobs | https://developer.usajobs.gov/ |
 | `THE_MUSE_API_KEY` *(optional)* | Higher Muse rate limit | https://www.themuse.com/developers/api/v2 |
-| `ANTHROPIC_API_KEY` | AI-tailored cover letters & answers | https://console.anthropic.com/ |
+| `ANTHROPIC_API_KEY` | AI-tailored cover letters, answers, fit scoring, positioning and query planning | https://console.anthropic.com/ |
 
 ### How search works across boards
 
@@ -93,7 +94,8 @@ npm start          # Express serves the API + the built client on :4000
 
 ## Roadmap
 
-- **Phase 1 (done):** in-app autofill helper, AI cover letters / answers, multi-board search, full tracker, profile + resume storage.
+- **Phase 1.5 (done):** documents as AI context, AI orchestration, application answers, multi-board search, full tracker, profile + resume storage.
+- **Phase 3 (done):** explainable fit scoring, recommendations, search preferences, positioning suggestions, and query planning.
 - **Phase 2:** Safari Web Extension that injects autofill directly into external application forms — scaffold in [`extension-safari/`](./extension-safari/).
 
 ## Data & privacy

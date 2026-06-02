@@ -15,8 +15,10 @@ implemented and shipped on its own.
 | [phase-5-scale.md](./phase-5-scale.md) | 5 | Auth & multi-device sync (optional) |
 
 ## Build order
-`1.5` → `correctness` → `3` → `2` → `4` → `5`. Within a phase, work units are
-numbered in dependency order. Each unit is sized to one PR.
+`1.5` ✅ → `correctness` ✅ → `3` ✅ → `2` → `4` → `5`. Within a phase, work units
+are numbered in dependency order. Each unit is sized to one PR.
+
+Phase 3 as-built detail: [`phase-3-index.md`](./phase-3-index.md).
 
 ---
 

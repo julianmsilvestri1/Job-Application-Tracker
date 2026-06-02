@@ -9,6 +9,12 @@ template fallbacks, testing/CI).
 
 > Status legend: ✅ done · 🟡 in progress · ⬜ not started
 
+## Status: ✅ complete
+
+All four units shipped with deterministic fallbacks. 53 server + 10 client tests
+green; lint clean (`--max-warnings 0`); client build passes; manual end-to-end
+walkthrough captured.
+
 ## Goal
 
 Make the portal **personalized**: rank every posting by an explainable fit score,
@@ -48,9 +54,9 @@ Design rules carried from the conventions:
 
 ## Work units (ordered)
 
-### Unit 3.1 — AI job-fit scoring 🟡
+### Unit 3.1 — AI job-fit scoring ✅
 - **Schema:** migration 4 adds `job_scores(job_key, profile_hash, score, reasons,
-  gaps, created_at)` (PK `job_key, profile_hash`).
+  gaps, method, created_at)` (PK `job_key, profile_hash`).
 - **Heuristics:** `heuristicScore(candidate, job)` → `{ score 0–100, reasons[],
   gaps[] }` from skill/title overlap.
 - **Orchestrator:** `scoreJobs({ jobs, db, refresh })` — builds candidate context
@@ -61,25 +67,25 @@ Design rules carried from the conventions:
 - **Endpoints:** `POST /api/jobs/score {jobs}` and `GET /api/jobs/search?rank=true`
   (attaches a `fit` object to each job).
 - **Frontend:** fit badge (`87% fit`) per result, expandable reasons/gaps, and a
-  "Sort by fit" toggle.
+  "Sort by fit" toggle (`FitBadge` + `JobCard`).
 - **Tests:** heuristic band test; AI path parses tool JSON; cache hit avoids a 2nd
-  call; route returns scores.
+  call; model-omission + API-error fall back to heuristic; client FitBadge + sort.
 
-### Unit 3.2 — Preferences & "Recommended for you" ⬜
+### Unit 3.2 — Preferences & "Recommended for you" ✅
 - **Schema:** migration 5 adds `search_preferences` (single row, id=1).
 - **Endpoints:** `GET/PUT /api/preferences`; `GET /api/jobs/recommended` builds
-  queries from prefs (or, when empty, from `planQueries` fallback over the
-  profile), runs `searchAll`, scores, returns top N. Cached for the search TTL.
+  queries from prefs (or, when empty, from `planQueries` over the profile), runs
+  `searchAll`, scores, returns top N. Cached for the search TTL.
 - **Frontend:** Profile "Job preferences" card; Dashboard "Recommended for you".
 
-### Unit 3.3 — Positioning suggestions ⬜
+### Unit 3.3 — Positioning suggestions ✅
 - **Orchestrator:** `positioning({ db, refresh })` → `{ headlines[], targetTitles[],
   keywordStrategy[], summaryRewrite }`; heuristic fallback from skills/recent titles.
 - **Endpoint:** `GET /api/assistant/positioning`.
 - **Frontend:** Profile "Positioning" panel — apply a headline / summary to the
-  profile in one click; target titles deep-link into Search.
+  profile in one click; target titles deep-link into Search (`/search?q=`).
 
-### Unit 3.4 — AI query planning / expansion ⬜
+### Unit 3.4 — AI query planning / expansion ✅
 - **Orchestrator:** `planQueries({ intent, db, refresh })` → `{ queries:[{query,
   location?, remote?}], rationale }`; heuristic = synonym/skill expansion.
 - **Endpoint:** `GET /api/assistant/plan-queries?intent=…` (also used by
@@ -87,11 +93,11 @@ Design rules carried from the conventions:
 - **Frontend:** Search "✨ Improve my search" runs the expanded multi-query search
   and merges results.
 
-## Phase exit criteria (must all pass)
-- [ ] Jobs sortable by explainable fit score (AI + heuristic fallback).
-- [ ] Dashboard "Recommended for you" driven by preferences/profile.
-- [ ] Positioning suggestions actionable from Profile.
-- [ ] Query planning improves search coverage.
-- [ ] Scoring cached; token cost bounded by batching + cache.
-- [ ] All server (`node --test`) and client (`vitest`) tests green; lint clean;
+## Phase exit criteria (all pass)
+- [x] Jobs sortable by explainable fit score (AI + heuristic fallback).
+- [x] Dashboard "Recommended for you" driven by preferences/profile.
+- [x] Positioning suggestions actionable from Profile.
+- [x] Query planning improves search coverage.
+- [x] Scoring cached; token cost bounded by batching + cache.
+- [x] All server (`node --test`) and client (`vitest`) tests green; lint clean;
       client build passes; manual end-to-end walkthrough captured.

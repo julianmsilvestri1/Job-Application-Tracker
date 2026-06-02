@@ -32,7 +32,7 @@ export default function AutofillPanel({ onClose }) {
           <button className="btn ghost" onClick={onClose}>✕</button>
         </div>
         <div className="banner info">
-          Click any field to copy it, then paste into the job site's form. Fields come
+          Click any field to copy it, then paste into the job site’s form. Fields come
           straight from your Profile — keep it up to date for the best autofill.
         </div>
         {fields.length === 0 && (

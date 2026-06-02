@@ -12,10 +12,16 @@
     "build": "npm run build --prefix client",
     "start": "npm run start --prefix server",
     "pretest": "npm install --prefix client --no-audit --no-fund 2>/dev/null || true",
-    "test": "npm run test --prefix server && npm run test --prefix client"
+    "test": "npm run test --prefix server && npm run test --prefix client",
+    "lint": "eslint . --max-warnings 0"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "@eslint/js": "^9.39.4",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0"
   },
   "engines": {
     "node": ">=18"

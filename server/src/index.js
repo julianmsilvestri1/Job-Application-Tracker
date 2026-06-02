@@ -40,7 +40,9 @@ if (fs.existsSync(clientDist)) {
 }
 
 // Centralized error handler (e.g. multer upload errors).
-app.use((err, req, res, next) => {
+// Express identifies error middleware by its 4-arg signature, so the unused
+// args are kept (underscore-prefixed to satisfy lint).
+app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(err.status || 400).json({ error: err.message || 'Server error' });
 });

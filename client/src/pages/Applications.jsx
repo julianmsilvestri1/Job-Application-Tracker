@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 import AssistantModal from '../components/AssistantModal.jsx';
 import { useToast } from '../components/Toaster.jsx';
@@ -12,12 +12,13 @@ export default function Applications() {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [assistJob, setAssistJob] = useState(null);
   const { toast } = useToast();
-  const notify = (m) => toast(m, 'success');
+  const notify = useCallback((m) => toast(m, 'success'), [toast]);
 
-  function load() {
-    api.getApplications(filter === 'all' ? undefined : filter).then(setApps).catch((e) => toast(e.message, 'error'));
-  }
-  useEffect(load, [filter]);
+  const load = useCallback(() => {
+    api.getApplications(filter === 'all' ? undefined : filter)
+      .then(setApps).catch((e) => toast(e.message, 'error'));
+  }, [filter, toast]);
+  useEffect(() => { load(); }, [load]);
   useEffect(() => { api.assistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch((e) => toast(e.message, 'error')); }, [toast]);
 
   async function changeStatus(app, status) {
@@ -39,7 +40,7 @@ export default function Applications() {
   return (
     <div>
       <h1 className="page-title">Applications</h1>
-      <p className="page-sub">Every job you've saved or applied to, in one pipeline.</p>
+      <p className="page-sub">Every job you’ve saved or applied to, in one pipeline.</p>
 
       <div className="tabs">
         {STATUSES.map((s) => (

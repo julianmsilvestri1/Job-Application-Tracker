@@ -46,7 +46,7 @@ router.get('/', (req, res) => {
   res.json(db.prepare(`SELECT ${LIST_COLS} FROM documents ORDER BY created_at DESC`).all());
 });
 
-router.post('/', upload.single('file'), async (req, res, next) => {
+router.post('/', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const type = req.body.type || 'resume';
   const isDefault = req.body.is_default ? 1 : 0;

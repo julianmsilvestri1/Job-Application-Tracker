@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import http from 'node:http';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../migrations.js';
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useToast } from '../components/Toaster.jsx';
 
@@ -8,16 +8,16 @@ export default function Profile() {
   const [education, setEducation] = useState([]);
   const [documents, setDocuments] = useState([]);
   const { toast } = useToast();
-  const notify = (m) => toast(m, 'success');
-  const notifyError = (e) => toast(e?.message || String(e), 'error');
+  const notify = useCallback((m) => toast(m, 'success'), [toast]);
+  const notifyError = useCallback((e) => toast(e?.message || String(e), 'error'), [toast]);
 
-  function load() {
+  const load = useCallback(() => {
     api.getProfile().then(({ profile, experiences, education }) => {
       setProfile(profile); setExperiences(experiences); setEducation(education);
     }).catch((e) => toast(e.message, 'error'));
     api.getDocuments().then(setDocuments).catch((e) => toast(e.message, 'error'));
-  }
-  useEffect(load, []);
+  }, [toast]);
+  useEffect(() => { load(); }, [load]);
 
   if (!profile) return <p className="spin">Loading…</p>;
 
@@ -273,10 +273,10 @@ const EXTRACTION = {
 function OrphanAnswersCard({ notify, notifyError }) {
   const [answers, setAnswers] = useState([]);
 
-  function load() {
+  const load = useCallback(() => {
     api.getOrphanedAnswers().then(setAnswers).catch(notifyError);
-  }
-  useEffect(load, []);
+  }, [notifyError]);
+  useEffect(() => { load(); }, [load]);
 
   async function remove(id) {
     try {

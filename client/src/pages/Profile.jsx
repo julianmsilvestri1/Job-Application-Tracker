@@ -7,6 +7,7 @@ export default function Profile() {
   const [experiences, setExperiences] = useState([]);
   const [education, setEducation] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [preferences, setPreferences] = useState(null);
   const { toast } = useToast();
   const notify = useCallback((m) => toast(m, 'success'), [toast]);
   const notifyError = useCallback((e) => toast(e?.message || String(e), 'error'), [toast]);
@@ -16,6 +17,7 @@ export default function Profile() {
       setProfile(profile); setExperiences(experiences); setEducation(education);
     }).catch((e) => toast(e.message, 'error'));
     api.getDocuments().then(setDocuments).catch((e) => toast(e.message, 'error'));
+    api.getPreferences().then(setPreferences).catch((e) => toast(e.message, 'error'));
   }, [toast]);
   useEffect(() => { load(); }, [load]);
 
@@ -28,6 +30,10 @@ export default function Profile() {
 
       <PersonalInfo profile={profile} setProfile={setProfile} notify={notify} notifyError={notifyError} />
       <SkillsCard profile={profile} setProfile={setProfile} notify={notify} notifyError={notifyError} />
+      {preferences && (
+        <PreferencesCard preferences={preferences} setPreferences={setPreferences} notify={notify} notifyError={notifyError} />
+      )}
+      <PositioningCard profile={profile} setProfile={setProfile} notify={notify} notifyError={notifyError} />
       <ExperienceCard items={experiences} reload={load} notify={notify} notifyError={notifyError} />
       <EducationCard items={education} reload={load} notify={notify} notifyError={notifyError} />
       <DocumentsCard documents={documents} reload={load} notify={notify} notifyError={notifyError} />
@@ -116,6 +122,142 @@ function SkillsCard({ profile, setProfile, notify, notifyError }) {
       </form>
     </div>
   );
+}
+
+function PreferencesCard({ preferences, setPreferences, notify, notifyError }) {
+  const [form, setForm] = useState({
+    ...preferences,
+    titles: (preferences.titles || []).join(', '),
+    locations: (preferences.locations || []).join(', '),
+    keywords: (preferences.keywords || []).join(', '),
+    sources: (preferences.sources || []).join(', '),
+  });
+
+  async function save() {
+    try {
+      const saved = await api.updatePreferences({
+        titles: splitList(form.titles),
+        locations: splitList(form.locations),
+        keywords: splitList(form.keywords),
+        sources: splitList(form.sources),
+        remote_only: form.remote_only,
+        min_salary: form.min_salary,
+      });
+      setPreferences(saved);
+      setForm({
+        ...saved,
+        titles: (saved.titles || []).join(', '),
+        locations: (saved.locations || []).join(', '),
+        keywords: (saved.keywords || []).join(', '),
+        sources: (saved.sources || []).join(', '),
+      });
+      notify('Job preferences saved');
+    } catch (e) { notifyError(e); }
+  }
+
+  return (
+    <div className="card">
+      <h3>Job preferences</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        These power the Dashboard recommendations and fit-ranked discovery.
+      </p>
+      <div className="grid-2">
+        <Field label="Target titles"><input value={form.titles} onChange={(e) => setForm({ ...form, titles: e.target.value })} placeholder="Product Manager, Growth Lead" /></Field>
+        <Field label="Preferred locations"><input value={form.locations} onChange={(e) => setForm({ ...form, locations: e.target.value })} placeholder="Remote, New York" /></Field>
+        <Field label="Keywords"><input value={form.keywords} onChange={(e) => setForm({ ...form, keywords: e.target.value })} placeholder="AI, SaaS, customer success" /></Field>
+        <Field label="Sources"><input value={form.sources} onChange={(e) => setForm({ ...form, sources: e.target.value })} placeholder="Optional: remotive,themuse" /></Field>
+        <Field label="Minimum salary"><input value={form.min_salary || ''} onChange={(e) => setForm({ ...form, min_salary: e.target.value })} placeholder="$120k" /></Field>
+        <div className="checkbox-row" style={{ alignSelf: 'center' }}>
+          <input
+            id="pref-remote"
+            type="checkbox"
+            checked={Boolean(form.remote_only)}
+            onChange={(e) => setForm({ ...form, remote_only: e.target.checked })}
+          />
+          <label htmlFor="pref-remote">Remote only</label>
+        </div>
+      </div>
+      <button className="btn" onClick={save}>Save preferences</button>
+    </div>
+  );
+}
+
+function PositioningCard({ profile, setProfile, notify, notifyError }) {
+  const [positioning, setPositioning] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function load(refresh = false) {
+    setLoading(true);
+    try {
+      setPositioning(await api.getPositioning(refresh));
+    } catch (e) { notifyError(e); }
+    setLoading(false);
+  }
+
+  async function applyProfile(update, message) {
+    try {
+      const saved = await api.updateProfile(update);
+      setProfile(saved);
+      notify(message);
+    } catch (e) { notifyError(e); }
+  }
+
+  return (
+    <div className="card">
+      <div className="section-actions">
+        <div>
+          <h3 style={{ margin: 0 }}>Positioning</h3>
+          <div className="autofill-label">AI-tailored headline, target title, and keyword guidance.</div>
+        </div>
+        <button className="btn small secondary" onClick={() => load(Boolean(positioning))} disabled={loading}>
+          {loading ? 'Thinking…' : positioning ? 'Refresh' : 'Generate'}
+        </button>
+      </div>
+      {!positioning ? (
+        <p className="muted">Generate suggestions from your profile, work history, and default resume text.</p>
+      ) : (
+        <>
+          {positioning.warning && <div className="banner">{positioning.warning}</div>}
+          <label>Headline variants</label>
+          <div className="suggestion-list">
+            {(positioning.headlines || []).map((headline) => (
+              <button key={headline} className="suggestion" onClick={() => applyProfile({ headline }, 'Headline applied')}>
+                {headline}
+              </button>
+            ))}
+          </div>
+          <label>Target titles</label>
+          <div className="tag-input-tags">
+            {(positioning.targetTitles || []).map((title) => (
+              <a key={title} className="tag" href={`/search?q=${encodeURIComponent(title)}`}>{title}</a>
+            ))}
+          </div>
+          <label>Keyword strategy</label>
+          <ul className="muted" style={{ marginTop: 0 }}>
+            {(positioning.keywordStrategy || []).map((item) => <li key={item}>{item}</li>)}
+          </ul>
+          {positioning.summaryRewrite && (
+            <>
+              <Field label="Summary rewrite">
+                <textarea value={positioning.summaryRewrite} readOnly />
+              </Field>
+              <button
+                className="btn secondary"
+                onClick={() => applyProfile({ summary: positioning.summaryRewrite }, 'Summary applied')}
+              >
+                Apply summary rewrite
+              </button>
+            </>
+          )}
+          <p className="autofill-label" style={{ marginBottom: 0 }}>Current headline: {profile.headline || 'Not set'}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function splitList(value) {
+  return String(value || '').split(',').map((v) => v.trim()).filter(Boolean);
 }
 
 const EXP_BLANK = { company: '', title: '', location: '', start_date: '', end_date: '', is_current: false, description: '' };

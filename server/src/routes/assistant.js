@@ -1,7 +1,13 @@
 import { Router } from 'express';
 import db from '../db.js';
 import { getProfile } from './profile.js';
-import { coverLetter, answerQuestion, aiEnabled } from '../services/ai/orchestrator.js';
+import {
+  coverLetter,
+  answerQuestion,
+  aiEnabled,
+  positioning,
+  planQueries,
+} from '../services/ai/orchestrator.js';
 
 const router = Router();
 
@@ -59,6 +65,25 @@ router.post('/answer', async (req, res) => {
   const job = resolveJob(req.body) || {};
   try {
     res.json(await answerQuestion({ job, question, refresh: Boolean(req.body?.refresh) }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/positioning', async (req, res) => {
+  try {
+    res.json(await positioning({ refresh: req.query.refresh === 'true' || req.query.refresh === '1' }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/query-plan', async (req, res) => {
+  try {
+    res.json(await planQueries({
+      intent: req.body?.intent || '',
+      refresh: Boolean(req.body?.refresh),
+    }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

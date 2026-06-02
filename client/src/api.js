@@ -37,6 +37,10 @@ export const api = {
   // Jobs
   getProviders: () => request('/jobs/providers'),
   searchJobs: (params) => request(`/jobs/search?${new URLSearchParams(params)}`),
+  scoreJobs: (jobs) => request('/jobs/score', { method: 'POST', body: JSON.stringify({ jobs }) }),
+  getRecommendedJobs: (params = {}) => request(`/jobs/recommended?${new URLSearchParams(params)}`),
+  getPreferences: () => request('/preferences'),
+  updatePreferences: (body) => request('/preferences', { method: 'PUT', body: JSON.stringify(body) }),
 
   // Applications
   getApplications: (status) => request(`/applications${status ? `?status=${status}` : ''}`),
@@ -58,4 +62,6 @@ export const api = {
   getAutofill: () => request('/assistant/autofill'),
   generateCoverLetter: (b) => request('/assistant/cover-letter', { method: 'POST', body: JSON.stringify(b) }),
   answerQuestion: (b) => request('/assistant/answer', { method: 'POST', body: JSON.stringify(b) }),
+  getPositioning: (refresh = false) => request(`/assistant/positioning?${new URLSearchParams({ refresh: String(refresh) })}`),
+  planQueries: (b) => request('/assistant/query-plan', { method: 'POST', body: JSON.stringify(b) }),
 };

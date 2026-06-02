@@ -12,6 +12,7 @@ const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 const ANTHROPIC_VERSION = '2023-06-01';
 const RESUME_BUDGET = 6000; // chars of resume text injected into context
 const CACHE_TTL_MS = Number(process.env.AI_CACHE_TTL_MS) || 10 * 60 * 1000;
+const SCORE_BATCH_SIZE = 8;
 
 /** @type {Map<string, { value: object, expiresAt: number }>} */
 const responseCache = new Map();
@@ -20,6 +21,10 @@ function cacheKey(task, parts) {
   const payload = parts.filter((p) => p != null).join('\0');
   const digest = crypto.createHash('sha256').update(payload).digest('hex').slice(0, 24);
   return `${task}:${digest}`;
+}
+
+function hashText(text) {
+  return crypto.createHash('sha256').update(text || '').digest('hex');
 }
 
 function getCached(key) {
@@ -104,13 +109,14 @@ export async function buildCandidateContext({ includeResume = true, db = default
 // --- Low-level Claude call -------------------------------------------------
 
 // Returns text, or (when jsonSchema is given) the parsed tool input object.
-async function complete({ system, user, maxTokens = 800, jsonSchema = null }) {
+async function complete({ system, user, maxTokens = 800, jsonSchema = null, temperature }) {
   const body = {
     model: MODEL,
     max_tokens: maxTokens,
     system,
     messages: [{ role: 'user', content: user }],
   };
+  if (temperature != null) body.temperature = temperature;
   if (jsonSchema) {
     body.tools = [{ name: 'respond', description: 'Return the structured result.', input_schema: jsonSchema }];
     body.tool_choice = { type: 'tool', name: 'respond' };
@@ -199,7 +205,363 @@ export async function answerQuestion({ job = {}, question, db = defaultDb, refre
   }
 }
 
+export async function scoreJobs({ jobs = [], db = defaultDb, refresh = false } = {}) {
+  const ctx = await buildCandidateContext({ includeResume: true, db });
+  const profileHash = hashText(ctx.text);
+  const normalized = jobs.map((job) => ({ job, job_key: jobKey(job) })).filter(({ job }) => job);
+  if (normalized.length === 0) return { results: [], source: aiEnabled() ? 'ai' : 'template' };
+
+  const results = new Map();
+  const uncached = [];
+
+  for (const item of normalized) {
+    if (!item.job_key) {
+      results.set(cacheResultKey(item), heuristicJobScore({ profile: ctx.profile, job: item.job, jobKey: null }));
+      continue;
+    }
+    const cached = refresh ? null : readJobScore(db, item.job_key, profileHash);
+    if (cached) {
+      results.set(cacheResultKey(item), { ...cached, source: 'cache' });
+    } else {
+      uncached.push(item);
+    }
+  }
+
+  if (uncached.length === 0) {
+    return { results: normalized.map((item) => results.get(cacheResultKey(item))).filter(Boolean), source: 'cache' };
+  }
+
+  if (!aiEnabled()) {
+    for (const item of uncached) {
+      const scored = heuristicJobScore({ profile: ctx.profile, job: item.job, jobKey: item.job_key });
+      results.set(cacheResultKey(item), scored);
+      writeJobScore(db, scored, profileHash);
+    }
+    return { results: normalized.map((item) => results.get(cacheResultKey(item))).filter(Boolean), source: 'template' };
+  }
+
+  try {
+    for (let i = 0; i < uncached.length; i += SCORE_BATCH_SIZE) {
+      const batch = uncached.slice(i, i + SCORE_BATCH_SIZE);
+      const aiResults = await scoreJobBatch({ ctx, batch });
+      for (const item of batch) {
+        const raw = aiResults.find((r) => r.job_key === item.job_key);
+        const scored = raw
+          ? cleanScoreResult(raw, item.job_key, 'ai')
+          : heuristicJobScore({ profile: ctx.profile, job: item.job, jobKey: item.job_key, source: 'template' });
+        results.set(cacheResultKey(item), scored);
+        writeJobScore(db, scored, profileHash);
+      }
+    }
+    return { results: normalized.map((item) => results.get(cacheResultKey(item))).filter(Boolean), source: 'ai' };
+  } catch (err) {
+    for (const item of uncached) {
+      const scored = heuristicJobScore({ profile: ctx.profile, job: item.job, jobKey: item.job_key });
+      results.set(cacheResultKey(item), scored);
+      writeJobScore(db, scored, profileHash);
+    }
+    return {
+      results: normalized.map((item) => results.get(cacheResultKey(item))).filter(Boolean),
+      source: 'template',
+      warning: err.message,
+    };
+  }
+}
+
+export async function positioning({ db = defaultDb, refresh = false } = {}) {
+  const ctx = await buildCandidateContext({ includeResume: true, db });
+  if (!aiEnabled()) return { ...templatePositioning(ctx), source: 'template' };
+
+  const key = cacheKey('positioning', [ctx.text]);
+  if (!refresh) {
+    const cached = getCached(key);
+    if (cached) return cached;
+  }
+
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      headlines: { type: 'array', items: { type: 'string' } },
+      targetTitles: { type: 'array', items: { type: 'string' } },
+      keywordStrategy: { type: 'array', items: { type: 'string' } },
+      summaryRewrite: { type: 'string' },
+    },
+    required: ['headlines', 'targetTitles', 'keywordStrategy', 'summaryRewrite'],
+  };
+  const system = 'You are an expert career positioning strategist. Use only the candidate context. Return specific, truthful options.';
+  const user = `Create positioning guidance for this candidate.\n\n=== CANDIDATE ===\n${ctx.text}`;
+
+  try {
+    const raw = await complete({ system, user, jsonSchema: schema, maxTokens: 900, temperature: 0.2 });
+    const result = { ...cleanPositioning(raw, ctx), source: 'ai' };
+    setCached(key, result);
+    return result;
+  } catch (err) {
+    return { ...templatePositioning(ctx), source: 'template', warning: err.message };
+  }
+}
+
+export async function planQueries({ intent = '', db = defaultDb, refresh = false } = {}) {
+  const ctx = await buildCandidateContext({ includeResume: true, db });
+  if (!aiEnabled()) return { ...templateQueryPlan(ctx, intent), source: 'template' };
+
+  const key = cacheKey('planQueries', [ctx.text, intent]);
+  if (!refresh) {
+    const cached = getCached(key);
+    if (cached) return cached;
+  }
+
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      queries: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            query: { type: 'string' },
+            location: { type: 'string' },
+            remote: { type: 'boolean' },
+          },
+          required: ['query'],
+        },
+      },
+      rationale: { type: 'string' },
+    },
+    required: ['queries', 'rationale'],
+  };
+  const system =
+    'You expand job-search intent into 3 to 5 board-friendly searches. Prefer concise Boolean-free keyword strings.';
+  const user =
+    `=== CANDIDATE ===\n${ctx.text}\n\n` +
+    `=== SEARCH INTENT ===\n${intent || 'Recommend suitable job searches for this candidate.'}`;
+
+  try {
+    const raw = await complete({ system, user, jsonSchema: schema, maxTokens: 700, temperature: 0.2 });
+    const result = { ...cleanQueryPlan(raw, ctx, intent), source: 'ai' };
+    setCached(key, result);
+    return result;
+  } catch (err) {
+    return { ...templateQueryPlan(ctx, intent), source: 'template', warning: err.message };
+  }
+}
+
 // --- Template fallbacks ----------------------------------------------------
+
+export function jobKey(job = {}) {
+  if (job.source && (job.externalId || job.external_id)) return `${job.source}:${job.externalId || job.external_id}`;
+  if (job.source && job.url) return `${job.source}:${job.url}`;
+  return '';
+}
+
+function cacheResultKey(item) {
+  return item.job_key || JSON.stringify([item.job?.source, item.job?.title, item.job?.company, item.job?.url]);
+}
+
+function readJobScore(db, key, profileHash) {
+  const row = db.prepare('SELECT * FROM job_scores WHERE job_key = ? AND profile_hash = ?').get(key, profileHash);
+  if (!row) return null;
+  return {
+    job_key: row.job_key,
+    score: clampScore(row.score),
+    reasons: parseJson(row.reasons, []),
+    gaps: parseJson(row.gaps, []),
+  };
+}
+
+function writeJobScore(db, result, profileHash) {
+  if (!result.job_key) return;
+  db.prepare(`
+    INSERT OR REPLACE INTO job_scores (job_key, profile_hash, score, reasons, gaps, created_at)
+    VALUES (@job_key, @profile_hash, @score, @reasons, @gaps, datetime('now'))
+  `).run({
+    job_key: result.job_key,
+    profile_hash: profileHash,
+    score: clampScore(result.score),
+    reasons: JSON.stringify(result.reasons || []),
+    gaps: JSON.stringify(result.gaps || []),
+  });
+}
+
+async function scoreJobBatch({ ctx, batch }) {
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      results: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            job_key: { type: 'string' },
+            score: { type: 'integer', minimum: 0, maximum: 100 },
+            reasons: { type: 'array', items: { type: 'string' } },
+            gaps: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['job_key', 'score', 'reasons', 'gaps'],
+        },
+      },
+    },
+    required: ['results'],
+  };
+  const system =
+    'You score job fit for one candidate. Return 0-100 where 100 is an unusually strong fit. ' +
+    'Reasons cite candidate strengths. Gaps cite missing or unclear requirements. Do not invent candidate facts.';
+  const jobs = batch.map(({ job, job_key }) => ({
+    job_key,
+    title: job.title || '',
+    company: job.company || '',
+    location: job.location || '',
+    remote: Boolean(job.remote),
+    description: (job.description || '').slice(0, 2500),
+  }));
+  const user = `=== CANDIDATE ===\n${ctx.text}\n\n=== JOBS JSON ===\n${JSON.stringify(jobs, null, 2)}`;
+  const raw = await complete({ system, user, jsonSchema: schema, maxTokens: 1400, temperature: 0.1 });
+  return Array.isArray(raw?.results) ? raw.results : [];
+}
+
+export function heuristicJobScore({ profile = {}, job = {}, jobKey: key = jobKey(job), source = 'template' }) {
+  const profileTerms = keywordSet([
+    profile.headline,
+    profile.summary,
+    ...(Array.isArray(profile.skills) ? profile.skills : []),
+  ].filter(Boolean).join(' '));
+  const jobTerms = keywordSet(`${job.title || ''} ${job.company || ''} ${job.description || ''}`);
+  const matched = [...profileTerms].filter((term) => jobTerms.has(term));
+  const denominator = Math.max(4, Math.min(profileTerms.size || 1, 12));
+  const coverage = Math.min(1, matched.length / denominator);
+  const titleBoost = [...profileTerms].some((term) => normalizeWords(job.title || '').includes(term)) ? 12 : 0;
+  const score = clampScore(Math.round(35 + coverage * 50 + titleBoost));
+  const matchedLabel = matched.slice(0, 6).join(', ');
+  return {
+    job_key: key || '',
+    score,
+    reasons: matched.length
+      ? [`Matches your profile keywords: ${matchedLabel}.`]
+      : ['Uses your saved profile to estimate fit; add skills and a resume for sharper scoring.'],
+    gaps: score >= 80
+      ? []
+      : ['Review the posting for requirements not yet reflected in your profile or resume.'],
+    source,
+  };
+}
+
+function keywordSet(text = '') {
+  const stop = new Set(['and', 'the', 'for', 'with', 'from', 'that', 'this', 'you', 'your', 'are', 'job', 'role']);
+  return new Set(normalizeWords(text).filter((w) => w.length > 2 && !stop.has(w)).slice(0, 80));
+}
+
+function normalizeWords(text = '') {
+  return String(text).toLowerCase().replace(/[^a-z0-9+#. ]+/g, ' ').split(/\s+/).filter(Boolean);
+}
+
+function cleanScoreResult(raw, key, source) {
+  return {
+    job_key: key,
+    score: clampScore(raw?.score),
+    reasons: normalizeStringList(raw?.reasons).slice(0, 4),
+    gaps: normalizeStringList(raw?.gaps).slice(0, 4),
+    source,
+  };
+}
+
+function cleanPositioning(raw, ctx) {
+  const fallback = templatePositioning(ctx);
+  return {
+    headlines: normalizeStringList(raw?.headlines).slice(0, 5).length ? normalizeStringList(raw.headlines).slice(0, 5) : fallback.headlines,
+    targetTitles: normalizeStringList(raw?.targetTitles).slice(0, 8).length ? normalizeStringList(raw.targetTitles).slice(0, 8) : fallback.targetTitles,
+    keywordStrategy: normalizeStringList(raw?.keywordStrategy).slice(0, 10).length ? normalizeStringList(raw.keywordStrategy).slice(0, 10) : fallback.keywordStrategy,
+    summaryRewrite: typeof raw?.summaryRewrite === 'string' && raw.summaryRewrite.trim()
+      ? raw.summaryRewrite.trim()
+      : fallback.summaryRewrite,
+  };
+}
+
+export function templatePositioning(ctx = {}) {
+  const profile = ctx.profile || {};
+  const skills = Array.isArray(profile.skills) ? profile.skills.filter(Boolean) : [];
+  const baseTitle = profile.headline || ctx.experiences?.[0]?.title || 'Results-driven professional';
+  const topSkills = skills.slice(0, 4);
+  const skillPhrase = topSkills.length ? ` specializing in ${topSkills.join(', ')}` : '';
+  const targetTitles = [
+    profile.headline,
+    ctx.experiences?.[0]?.title,
+    topSkills[0] && `${topSkills[0]} Specialist`,
+    topSkills[1] && `${topSkills[1]} Consultant`,
+  ].filter(Boolean);
+  return {
+    headlines: [
+      `${baseTitle}${skillPhrase}`,
+      topSkills.length ? `${baseTitle} | ${topSkills.slice(0, 3).join(' + ')}` : baseTitle,
+      `${baseTitle} focused on measurable business impact`,
+    ],
+    targetTitles: [...new Set(targetTitles)].slice(0, 6),
+    keywordStrategy: topSkills.length
+      ? topSkills.map((skill) => `Use "${skill}" in resume bullets, search queries, and cover-letter proof points.`)
+      : ['Add 5-8 concrete skills to your profile to unlock stronger keyword targeting.'],
+    summaryRewrite: profile.summary
+      ? `${profile.summary} I bring a focused record of matching role requirements with practical execution and clear communication.`
+      : `I am a ${baseTitle.toLowerCase()}${skillPhrase} with a focus on practical execution, clear communication, and measurable results.`,
+  };
+}
+
+function cleanQueryPlan(raw, ctx, intent) {
+  const fallback = templateQueryPlan(ctx, intent);
+  const queries = Array.isArray(raw?.queries)
+    ? raw.queries.map(cleanQuery).filter((q) => q.query).slice(0, 5)
+    : [];
+  return {
+    queries: queries.length ? queries : fallback.queries,
+    rationale: typeof raw?.rationale === 'string' && raw.rationale.trim() ? raw.rationale.trim() : fallback.rationale,
+  };
+}
+
+export function templateQueryPlan(ctx = {}, intent = '') {
+  const profile = ctx.profile || {};
+  const skills = Array.isArray(profile.skills) ? profile.skills.filter(Boolean) : [];
+  const headlineWords = (profile.headline || '').split(/\s+/).filter((w) => w.length > 2);
+  const base = intent.trim() || profile.headline || skills.slice(0, 3).join(' ') || 'job';
+  const primary = [base, ...skills.slice(0, 2)].join(' ').trim();
+  const queries = [
+    { query: primary, location: profile.location || '', remote: false },
+    { query: [profile.headline || headlineWords.join(' '), ...skills.slice(0, 3)].join(' ').trim(), location: '', remote: true },
+    { query: skills.slice(0, 4).join(' ') || base, location: profile.location || '', remote: false },
+  ].map(cleanQuery).filter((q) => q.query);
+  const unique = [];
+  const seen = new Set();
+  for (const q of queries) {
+    const key = `${q.query}|${q.location}|${q.remote}`;
+    if (!seen.has(key)) { seen.add(key); unique.push(q); }
+  }
+  return {
+    queries: unique.slice(0, 5),
+    rationale: skills.length
+      ? `Expanded from your profile skills: ${skills.slice(0, 5).join(', ')}.`
+      : 'Expanded from your headline and saved profile. Add skills for better coverage.',
+  };
+}
+
+function cleanQuery(q = {}) {
+  return {
+    query: String(q.query || '').replace(/\s+/g, ' ').trim(),
+    location: String(q.location || '').trim(),
+    remote: Boolean(q.remote),
+  };
+}
+
+function normalizeStringList(value) {
+  return Array.isArray(value) ? value.map((v) => String(v || '').trim()).filter(Boolean) : [];
+}
+
+function clampScore(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
 
 function templateCoverLetter(profile = {}, job = {}) {
   const name = profile.full_name || 'Your Name';

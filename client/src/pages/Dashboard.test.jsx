@@ -6,13 +6,22 @@ import { ToastProvider } from '../components/Toaster.jsx';
 import { api } from '../api.js';
 
 vi.mock('../api.js', () => ({
-  api: { getStats: vi.fn(), getApplications: vi.fn(), getProviders: vi.fn() },
+  api: {
+    getStats: vi.fn(),
+    getApplications: vi.fn(),
+    getProviders: vi.fn(),
+    getRecommendedJobs: vi.fn(),
+    assistantStatus: vi.fn(),
+    saveApplication: vi.fn(),
+  },
 }));
 
 beforeEach(() => {
   api.getStats.mockRejectedValue(new Error('stats failed'));
   api.getApplications.mockResolvedValue([]);
   api.getProviders.mockResolvedValue([]);
+  api.getRecommendedJobs.mockResolvedValue({ jobs: [], queries: [] });
+  api.assistantStatus.mockResolvedValue({ aiEnabled: false });
 });
 
 test('a failed load surfaces an error toast', async () => {

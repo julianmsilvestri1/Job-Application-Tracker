@@ -8,9 +8,12 @@ vi.mock('../api.js', () => ({
   api: {
     getProfile: vi.fn(),
     getDocuments: vi.fn(),
+    getPreferences: vi.fn(),
+    getPositioning: vi.fn(),
     getOrphanedAnswers: vi.fn(),
     updateExperience: vi.fn(),
     updateProfile: vi.fn(),
+    updatePreferences: vi.fn(),
   },
 }));
 
@@ -27,8 +30,14 @@ beforeEach(() => {
     education: [],
   });
   api.getDocuments.mockResolvedValue([]);
+  api.getPreferences.mockResolvedValue({
+    titles: [], locations: [], keywords: [], remote_only: false, min_salary: '', sources: [],
+  });
   api.getOrphanedAnswers.mockResolvedValue([]);
   api.updateExperience.mockResolvedValue({});
+  api.updatePreferences.mockResolvedValue({
+    titles: [], locations: [], keywords: [], remote_only: false, min_salary: '', sources: [],
+  });
 });
 
 test('edits an experience entry and calls the update API', async () => {

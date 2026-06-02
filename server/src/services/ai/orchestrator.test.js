@@ -7,6 +7,10 @@ import {
   buildCandidateContext,
   coverLetter,
   answerQuestion,
+  scoreJobs,
+  heuristicJobScore,
+  positioning,
+  planQueries,
   templateAnswer,
   aiEnabled,
   clearAiCache,
@@ -168,4 +172,73 @@ test('templateAnswer composes from profile facts by category', () => {
   assert.match(templateAnswer(profile, job, 'When can you start?'), /two weeks/i);
   // Generic fallback still non-empty and grounded.
   assert.ok(templateAnswer(profile, job, 'Describe a hard problem you solved').length > 0);
+});
+
+test('heuristicJobScore gives stronger scores for overlapping skills', () => {
+  const profile = { headline: 'Senior React Engineer', skills: ['React', 'Node', 'GraphQL'] };
+  const strong = heuristicJobScore({
+    profile,
+    job: { title: 'React Engineer', description: 'Build React and GraphQL apps with Node services.' },
+  });
+  const weak = heuristicJobScore({
+    profile,
+    job: { title: 'Accountant', description: 'Prepare audits and financial statements.' },
+  });
+  assert.ok(strong.score > weak.score);
+  assert.match(strong.reasons[0], /react/i);
+});
+
+test('scoreJobs parses AI tool JSON and persists cache hits', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  const db = seedDb({ resume: 'React resume' });
+  let calls = 0;
+  global.fetch = async () => {
+    calls += 1;
+    return {
+      ok: true,
+      json: async () => ({
+        content: [{
+          type: 'tool_use',
+          input: {
+            results: [{
+              job_key: 'remotive:123',
+              score: 91,
+              reasons: ['React and Node match the role.'],
+              gaps: ['Cloud experience is unclear.'],
+            }],
+          },
+        }],
+      }),
+    };
+  };
+
+  const jobs = [{ source: 'remotive', externalId: '123', title: 'React Engineer', description: 'React Node' }];
+  const first = await scoreJobs({ jobs, db });
+  const second = await scoreJobs({ jobs, db });
+
+  assert.equal(first.results[0].score, 91);
+  assert.equal(second.results[0].score, 91);
+  assert.equal(second.results[0].source, 'cache');
+  assert.equal(calls, 1);
+});
+
+test('scoreJobs falls back without an API key', async () => {
+  delete process.env.ANTHROPIC_API_KEY;
+  const db = seedDb();
+  const result = await scoreJobs({
+    jobs: [{ source: 'remotive', externalId: '7', title: 'React Engineer', description: 'React Node' }],
+    db,
+  });
+  assert.equal(result.source, 'template');
+  assert.ok(result.results[0].score > 0);
+});
+
+test('positioning fallback and query planning fallback are profile-specific', async () => {
+  delete process.env.ANTHROPIC_API_KEY;
+  const db = seedDb();
+  const pos = await positioning({ db });
+  const plan = await planQueries({ intent: 'remote startup role', db });
+  assert.ok(pos.headlines.length > 0);
+  assert.ok(pos.targetTitles.length > 0);
+  assert.ok(plan.queries.some((q) => /React|Node|remote startup role/i.test(q.query)));
 });

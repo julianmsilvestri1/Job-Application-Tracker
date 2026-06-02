@@ -68,11 +68,16 @@ Depends on Phase 1.5 (AI context) and 2.1 (doc↔app links). See conventions in
 - **Depends on:** none (data already present).
 - **Backend:**
   - `GET /api/applications/analytics` → funnel conversion (saved→applied→
-    interview→offer), applications-per-week, response rate, avg days-to-response.
+    interview→offer), applications-per-week, **response rate by job-board
+    source**, **avg days-to-first-response** (by company size/sector when known),
+    and **which profile/answer sections you edit most before submitting** (from
+    the `answer_edits` log, Phase 3.5.4) — closing the feedback loop on what's
+    working.
   - `GET /api/applications?q=&source=&remote=` → text search + filters.
   - `GET /api/applications/export.csv` → CSV download.
 - **Frontend:** Dashboard charts (lightweight — `recharts` or hand-rolled SVG);
-  Applications search/filter bar; Export button.
+  Applications search/filter bar; Export button. Live-updates via Phase 7 SSE
+  when present.
 - **Tests:** analytics math on a seeded `:memory:` DB; CSV shape; search filters.
 - **Acceptance:** funnel + weekly volume render; search/filter works; CSV opens
   in a spreadsheet.

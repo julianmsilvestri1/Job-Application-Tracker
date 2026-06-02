@@ -131,11 +131,36 @@ answers. 18 server + 2 client tests green.
 - ⬜ **Positioning suggestions**: headline variants, title targeting, keyword
   strategy; AI query expansion/planning for search.
 
+### Phase 3.5 — Local RAG / semantic layer ⬜ (next; highest-leverage)
+Realizes the master plan's pillar P1. Spec:
+[`docs/plans/phase-3.5-rag-semantic.md`](./docs/plans/phase-3.5-rag-semantic.md).
+- ⬜ In-process embeddings (Transformers.js, key-free) + a vector store
+  (pure-JS cosine by default; `sqlite-vec` optional at scale).
+- ⬜ **Retrieval-augmented context**: send the top 3–5 relevant chunks, not the
+  whole profile — sharper output, flat token cost; feeds the Phase 6 resolver.
+- ⬜ Semantic fit blend + near-duplicate detection (retrofit search/discovery).
+- ⬜ **Answer memory**: learn from edits, reinforce the user's voice (few-shot
+  via retrieval — not model fine-tuning).
+
 ### Phase 4 — Tracker intelligence & document variants ⬜
 - ⬜ AI **next actions**, follow-up reminders, interview prep per application.
 - ⬜ Per-job **document variants** ("Resume v2 for Stripe") tied to applications.
 - ⬜ Offer comparison; tracker search; analytics beyond status counts; export.
 - ⬜ Calendar/reminders, contacts.
+
+### Phase 6 — Autonomous Apply Engine ⬜ (the "apply for me")
+The north star. Full spec + technology pillars in the
+[master plan](./docs/plans/master-plan-autonomous-apply.md).
+- ⬜ Answer vault → field resolver (never fabricates) → apply plan → extension
+  autopilot (incl. `/extension/context`) → autonomy levels + approval gate +
+  hash-chained audit → batch apply queue → **6.7 optional Playwright runner**
+  (eligible hosts; LinkedIn/Indeed auto-submit stays denylisted).
+
+### Phase 7 — Connected portal ⬜
+Spec: [`docs/plans/phase-7-connected-portal.md`](./docs/plans/phase-7-connected-portal.md).
+- ⬜ **SSE** live tracker (real-time Kanban + agent-run monitor).
+- ⬜ Custom **MCP server** (search/profile/pipeline/draft/save/status from
+  Claude Desktop/Cursor; never auto-submit).
 
 ### Phase 5 — Scale (optional) ⬜
 - ⬜ Auth + multi-device sync if single-machine SQLite is outgrown.

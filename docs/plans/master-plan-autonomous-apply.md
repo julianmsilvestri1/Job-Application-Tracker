@@ -98,9 +98,12 @@ that powers four features at once:
 
 - **Tech:** [`@xenova/transformers`](https://github.com/xenova/transformers.js)
   (Transformers.js — ONNX runtime, runs **in-process, no API, no network**) with
-  a small sentence model (`all-MiniLM-L6-v2`, ~25 MB, 384-d) + **`sqlite-vec`**
-  for kNN search *inside the existing SQLite file*. A `vectors(content_hash,
-  embedding)` table embeds each string once.
+  a small sentence model (`all-MiniLM-L6-v2`, ~25 MB, 384-d). At personal scale
+  the default search is **pure-JS brute-force cosine** over a Float32 blob column
+  (no native extension, fully portable); **`sqlite-vec`** is an opt-in scale
+  upgrade for kNN inside the SQLite file. An `embeddings` table embeds each
+  string once (keyed by content hash). **Specified in detail in
+  [`phase-3.5-rag-semantic.md`](./phase-3.5-rag-semantic.md).**
 - **Why it's innovative:** the résumé never leaves the machine to be embedded,
   it works with **zero API key**, and the same subsystem unifies four features
   that would otherwise be four different hacks.
@@ -205,7 +208,8 @@ human approval gate by default and opt-in auto-submit where eligible.
 - Every automated action is logged and reversible up to the submit gate.
 - CAPTCHAs, logins, and identity checks always hand control back to the human.
 
-**Units:** 6.0 → 6.1 → 6.2 → 6.3 → 6.4 → 6.5 (→ 6.6 hardening)
+**Units:** 6.0 → 6.1 → 6.2 → 6.3 → 6.4 → 6.5 (→ 6.6 hardening) · 6.7 Playwright
+apply runner (alternative execution substrate, optional)
 
 ---
 
@@ -368,11 +372,20 @@ human approval gate by default and opt-in auto-submit where eligible.
   - **Highlight:** visibly mark low-confidence and `needsUser` fields and scroll
     the user to them; show a fill summary.
   - **Dry-run:** fill everything but never touch the submit button.
-- **Backend:** the resolve endpoint (6.1) + a `POST /api/apply/runs/:id/events`
-  to record what was filled.
+- **Backend:** a bi-directional `POST /api/extension/context` route — the content
+  script posts the scraped page (job title/company/description + normalized
+  fields `{label, selector, type, required}`); the backend resolves via 6.1
+  (RAG-narrowed context, 3.5) and returns a field→answer map. Plus
+  `POST /api/extension/save-job` (push a listing into the tracker on visit) and
+  `POST /api/apply/runs/:id/events`. **CORS is origin-locked to the extension ID**
+  so no other local process can reach these routes.
+- **Cross-browser:** one shared **Manifest V3** content-script core wrapped in
+  thin Safari **and** Chrome/Arc manifests (Chromium covers the Arc-heavy target
+  audience); Safari packaged via `safari-web-extension-converter`.
 - **Tests:** jsdom fixtures of Greenhouse/Lever/Workday/Ashby (incl. a multi-step
   form) filled from a plan; choice fields select the right option; unknown fields
-  are highlighted not guessed; dry-run never clicks submit.
+  are highlighted not guessed; dry-run never clicks submit; `/extension/context`
+  rejects disallowed origins.
 - **Acceptance:** on a sample ATS form, the extension fills all resolvable fields
   and attaches the resume, flags the rest, and submits nothing on its own.
 - **Commit:** `feat(extension): autopilot form fill from an application plan`
@@ -452,6 +465,40 @@ human approval gate by default and opt-in auto-submit where eligible.
 
 ---
 
+### Unit 6.7 — Local Playwright apply runner (alternative substrate, optional)
+- **Objective:** a second execution path to the extension — a local, **headed**
+  Playwright session the agent drives via the **accessibility tree**, for users
+  who want batch/hands-off filling on **eligible** sites. Complements (does not
+  replace) the extension autopilot (6.3): the extension is zero-install in the
+  user's everyday browser; the runner is a power-user/batch tool.
+- **Innovation (P2, P4):** `page.accessibility.snapshot()` yields a
+  token-efficient tree (`checkbox "Work authorization" [ref=e42]`) instead of
+  50k tokens of DOM, so Claude reasons over a readable snapshot and issues
+  targeted `fill`/`click` by ref. A simple **state machine** (snapshot → resolve
+  via 6.1 → fill → find "Next" → repeat → pause at "Submit") persists each step
+  to `apply_runs`/`apply_run_events`, so partial completions are **resumable**.
+- **Hard scope / honesty (critical):** governed by the **same autonomy policy +
+  denylist** as 6.4. **LinkedIn/Indeed remain auto-submit-denylisted** — their
+  User Agreements prohibit automated interaction, and automation risks account
+  suspension *even with review-before-submit*. The runner therefore targets
+  **direct-employer / ATS hosts** by default (Greenhouse/Lever/Workday/Ashby).
+  Any assisted fill on restricted hosts is an explicit, opt-in, ToS-warned
+  exception, **headed-only**, with a human-plausible throttle (1–3/session) and
+  genuine user agent. It **never** submits past the approval gate. CAPTCHA/login/
+  identity checks always hand control back to the human.
+- **Depends on:** 6.1 (resolver), 6.4 (policy/audit), 3.5 (RAG); `playwright`
+  (heavy, optional dep) running as a **separate local process** — not bundled
+  into the core server.
+- **Tests:** state-machine transitions over a recorded accessibility snapshot
+  (fixture); denylisted host can never reach submit; resume from a persisted
+  partial run; throttle enforced.
+- **Acceptance:** on an eligible ATS, the runner fills a multi-step flow from the
+  accessibility tree, pauses for confirmation, and resumes a partial run; on a
+  denylisted host it refuses to auto-submit.
+- **Commit:** `feat(apply): optional local Playwright apply runner (eligible hosts)`
+
+---
+
 ## 5. Cross-cutting data & API summary (end state)
 
 **New tables:** `answer_vault`, `apply_runs`, `apply_run_events` (hash-chained),
@@ -469,7 +516,17 @@ tables `vectors` (content-hash → embedding, P1) and `field_maps` +
 `GET /api/vault/completeness`, `POST /api/apply/resolve`,
 `POST /api/apply/plan`, `GET /api/apply/runs[/:id]`,
 `POST /api/apply/runs/:id/events`, `GET/PUT /api/apply/policies`,
-`POST /api/apply/queue`, `GET /api/apply/queue`.
+`POST /api/apply/queue`, `GET /api/apply/queue`,
+`POST /api/extension/context`, `POST /api/extension/save-job`.
+
+**Adopted enhancements (from review):**
+- **RAG / semantic layer** → [`phase-3.5-rag-semantic.md`](./phase-3.5-rag-semantic.md):
+  `embeddings` + `answer_edits` tables; retrieval-augmented context; semantic fit;
+  answer-voice reinforcement. Realizes pillar P1 and feeds the resolver (6.1).
+- **Connected portal** → [`phase-7-connected-portal.md`](./phase-7-connected-portal.md):
+  SSE live tracker (`GET /api/events`) + a custom **MCP server** (search/profile/
+  pipeline/draft/save/status tools; never auto-submit).
+- **Playwright apply runner** → Unit 6.7 (eligible hosts; ToS-honest).
 
 ---
 
@@ -547,11 +604,13 @@ extension**; **P4/P5** are the spine of Phase 6.2/6.5; **P6** guards 6.0.
 ## 9. Sequencing summary
 ```
 done:   1.5 ✅  →  correctness ✅  →  3 (discovery) ✅
-next:   2 (apply substrate: 2.1, 2.2, 2.4 field maps)
+NOW:    3.5 (RAG / semantic layer) — highest-leverage, improves every AI call + feeds 6.1
+next:   2 (apply substrate: 2.1, 2.2, 2.4 extension + field maps + /extension/context)
 then:   4.3 (resume variants)  [+ 4.1 coaching in parallel]
-then:   6 (autonomy: 6.0 → 6.1 → 6.2 → 6.3 → 6.4 → 6.5 → 6.6)
+then:   6 (autonomy: 6.0 → 6.1 → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7 Playwright runner)
+then:   7 (connected portal: SSE live tracker + MCP server)
 opt:    5 (scale/auth) only for cloud/multi-device; pull 5.0 seam early if cloud autonomy desired
-later:  remainder of 4 (4.2, 4.4, 4.5) — parallelizable, off the critical path
+later:  remainder of 4 (4.2, 4.4 analytics, 4.5) — parallelizable, off the critical path
 ```
 
 Each Phase 6 unit is one PR, follows the [shared conventions](./README.md), ships

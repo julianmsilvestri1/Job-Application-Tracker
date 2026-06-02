@@ -12,23 +12,29 @@ implemented and shipped on its own.
 ## Documents
 | Plan | Phase | Theme |
 |------|-------|-------|
-| [master-plan-autonomous-apply.md](./master-plan-autonomous-apply.md) | All | North star, autonomy levels, **Phase 6** apply engine |
+| [master-plan-autonomous-apply.md](./master-plan-autonomous-apply.md) | All | North star, autonomy levels, **Phase 6** apply engine, tech pillars |
 | [phase-1.5-foundation.md](./phase-1.5-foundation.md) | 1.5 | Documents as AI context + AI orchestration |
 | [phase-correctness.md](./phase-correctness.md) | X-cut | Correctness, tests, CI |
-| [phase-2-apply.md](./phase-2-apply.md) | 2 | Apply assistance: links, checklist, extension |
 | [phase-3-discovery.md](./phase-3-discovery.md) | 3 | Fit scoring, recommended feed, positioning |
+| [phase-3.5-rag-semantic.md](./phase-3.5-rag-semantic.md) | 3.5 | **Local RAG** — embeddings, retrieval-augmented context, answer memory |
+| [phase-2-apply.md](./phase-2-apply.md) | 2 | Apply assistance: links, checklist, extension |
 | [phase-4-tracker.md](./phase-4-tracker.md) | 4 | Tracker AI, document variants, analytics |
+| [phase-7-connected-portal.md](./phase-7-connected-portal.md) | 7 | **SSE live tracker + MCP server** |
 | [phase-5-scale.md](./phase-5-scale.md) | 5 | Auth & multi-device sync (optional) |
 
 ## Build order
-`1.5` → `correctness` → `3` → `2` → `4` → `5`. Within a phase, work units are
-numbered in dependency order. Each unit is sized to one PR.
+`1.5 ✅` → `correctness ✅` → `3 ✅` → **`3.5 (RAG)`** → `2` → `4.3` → `6` →
+`7` → `5 (opt)`. Within a phase, work units are numbered in dependency order.
+Each unit is sized to one PR.
 
 For the **autonomous-apply** goal specifically, the critical path is
-`2 (extension + field maps)` → `4.3 (resume variants)` → `6 (apply engine)`, with
-Phase 5 pulled in only for cloud/multi-device autonomy. See the
-[master plan](./master-plan-autonomous-apply.md) for the full sequencing and the
-Phase 6 unit specs.
+**`3.5 (semantic layer)`** → `2 (extension + field maps + /extension/context)` →
+`4.3 (resume variants)` → `6 (apply engine, incl. 6.7 Playwright runner)` →
+`7 (live tracker + MCP)`, with Phase 5 pulled in only for cloud/multi-device
+autonomy. RAG (3.5) is sequenced first because it improves every AI call now and
+feeds the Phase 6 field resolver. See the
+[master plan](./master-plan-autonomous-apply.md) for the full sequencing, the
+technology pillars, and the unit specs.
 
 ---
 

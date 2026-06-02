@@ -95,10 +95,22 @@ prefill only. The user reviews and clicks submit.
 - **Behaviour:** popup → "Autofill" → content script fetches
   `GET <portalUrl>/api/assistant/autofill`, applies the matching field map, fills
   empty fields, reports count. Never submits.
+- **Bi-directional bridge (sets up Phase 6.3):** the content script also
+  **scrapes the live form** (job title/company/description + normalized
+  `{label, selector, type, required}`) and POSTs it to
+  `POST /api/extension/context`, which resolves answers (RAG-narrowed, Phase 3.5)
+  and returns a field→answer map; plus `POST /api/extension/save-job` to push a
+  listing into the tracker on visit. **Lock Express CORS to the extension's
+  origin ID** so no other local process can reach these routes.
+- **Cross-browser:** one shared MV3 content-script core wrapped in thin **Safari
+  and Chrome/Arc** manifests (`esbuild` builds both; Safari via
+  `safari-web-extension-converter`).
 - **Tests:** unit-test field-map matching with jsdom fixtures of each ATS form
-  (sample HTML snippets under `extension-safari/test/`).
-- **Acceptance:** loads unpacked in Chrome and as a Safari Web Extension; fills a
-  sample Greenhouse/Lever form correctly; portal URL configurable.
+  (sample HTML snippets under `extension-safari/test/`); `/extension/context`
+  rejects disallowed origins.
+- **Acceptance:** loads unpacked in Chrome/Arc and as a Safari Web Extension;
+  fills a sample Greenhouse/Lever form correctly; portal URL configurable;
+  cross-origin requests to `/extension/*` are refused.
 - **Commit:** `feat(extension): production autofill with per-ATS field maps`
 
 ---

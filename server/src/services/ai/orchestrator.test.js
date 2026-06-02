@@ -10,6 +10,10 @@ import {
   templateAnswer,
   aiEnabled,
   clearAiCache,
+  scoreJobs,
+  positioning,
+  planQueries,
+  jobKey,
 } from './orchestrator.js';
 
 function seedDb({ resume } = {}) {
@@ -150,6 +154,143 @@ test('answerQuestion returns a useful template without a key (1.5.4)', async () 
   assert.equal(r.source, 'template');
   assert.ok(r.text.length > 0);
   assert.match(r.text, /Globex/);
+});
+
+// --- Phase 3: scoring ------------------------------------------------------
+
+test('jobKey is stable from source + externalId', () => {
+  assert.equal(jobKey({ source: 'remotive', externalId: '42' }), 'remotive:42');
+});
+
+test('scoreJobs (no key) uses the heuristic and caches to the DB', async () => {
+  delete process.env.ANTHROPIC_API_KEY;
+  const db = seedDb();
+  const jobs = [
+    { source: 'remotive', externalId: '1', title: 'React Engineer', description: 'React and Node.' },
+    { source: 'remotive', externalId: '2', title: 'Diesel Mechanic', description: 'Fix trucks.' },
+  ];
+  const scores = await scoreJobs({ jobs, db });
+  assert.equal(scores.length, 2);
+  assert.ok(scores[0].score > scores[1].score, 'react role should outrank the mechanic role');
+  assert.equal(scores[0].source, 'heuristic');
+  const cached = db.prepare('SELECT COUNT(*) AS n FROM job_scores').get();
+  assert.equal(cached.n, 2);
+  const again = await scoreJobs({ jobs, db });
+  assert.equal(again[0].source, 'cache');
+});
+
+test('scoreJobs (AI) parses batched tool JSON into scores', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  const db = seedDb({ resume: 'React expert' });
+  let calls = 0;
+  global.fetch = async () => {
+    calls += 1;
+    return {
+      ok: true,
+      json: async () => ({
+        content: [{
+          type: 'tool_use',
+          input: {
+            results: [
+              { job_key: 'remotive:1', score: 91, reasons: ['Strong React match'], gaps: [] },
+              { job_key: 'remotive:2', score: 12, reasons: [], gaps: ['No mechanical experience'] },
+            ],
+          },
+        }],
+      }),
+    };
+  };
+  const jobs = [
+    { source: 'remotive', externalId: '1', title: 'React Engineer', description: 'React.' },
+    { source: 'remotive', externalId: '2', title: 'Diesel Mechanic', description: 'Trucks.' },
+  ];
+  const scores = await scoreJobs({ jobs, db });
+  assert.equal(scores[0].score, 91);
+  assert.equal(scores[0].source, 'ai');
+  assert.equal(scores[1].score, 12);
+  assert.match(scores[0].reasons.join(' '), /React/);
+  assert.equal(calls, 1, 'two jobs should batch into a single AI call');
+});
+
+test('scoreJobs (AI) falls back to heuristic for jobs the model omits', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  const db = seedDb();
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({ content: [{ type: 'tool_use', input: { results: [
+      { job_key: 'remotive:1', score: 88, reasons: ['ok'], gaps: [] },
+    ] } }] }),
+  });
+  const jobs = [
+    { source: 'remotive', externalId: '1', title: 'React Engineer', description: 'React.' },
+    { source: 'remotive', externalId: '2', title: 'React Developer', description: 'React and Node.' },
+  ];
+  const scores = await scoreJobs({ jobs, db });
+  assert.equal(scores[0].source, 'ai');
+  assert.equal(scores[1].source, 'heuristic');
+});
+
+test('scoreJobs (AI) falls back to heuristic when the API errors', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  const db = seedDb();
+  global.fetch = async () => ({ ok: false, status: 500, text: async () => 'boom' });
+  const jobs = [{ source: 'remotive', externalId: '1', title: 'React Engineer', description: 'React.' }];
+  const scores = await scoreJobs({ jobs, db });
+  assert.equal(scores[0].source, 'heuristic');
+  assert.equal(typeof scores[0].score, 'number');
+});
+
+// --- Phase 3: positioning --------------------------------------------------
+
+test('positioning (no key) returns non-empty heuristic suggestions', async () => {
+  delete process.env.ANTHROPIC_API_KEY;
+  const db = seedDb();
+  const r = await positioning({ db });
+  assert.equal(r.source, 'heuristic');
+  assert.ok(r.headlines.length > 0);
+  assert.ok(r.summaryRewrite.length > 0);
+});
+
+test('positioning (AI) parses tool JSON', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  const db = seedDb();
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({ content: [{ type: 'tool_use', input: {
+      headlines: ['React Engineer who ships'], targetTitles: ['Frontend Engineer'],
+      keywordStrategy: ['React', 'TypeScript'], summaryRewrite: 'I build great UIs.',
+    } }] }),
+  });
+  const r = await positioning({ db });
+  assert.equal(r.source, 'ai');
+  assert.deepEqual(r.headlines, ['React Engineer who ships']);
+});
+
+// --- Phase 3: query planning ----------------------------------------------
+
+test('planQueries (no key) expands from the profile', async () => {
+  delete process.env.ANTHROPIC_API_KEY;
+  const db = seedDb();
+  const r = await planQueries({ intent: 'frontend', db });
+  assert.equal(r.source, 'heuristic');
+  assert.ok(r.queries.length >= 1);
+  assert.ok(r.queries.every((q) => q.query));
+});
+
+test('planQueries (AI) parses tool JSON and trims to valid queries', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  const db = seedDb();
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({ content: [{ type: 'tool_use', input: {
+      queries: [{ query: 'react developer' }, { query: '' }, { query: 'frontend engineer', remote: true }],
+      rationale: 'widen coverage',
+    } }] }),
+  });
+  const r = await planQueries({ intent: 'frontend', db });
+  assert.equal(r.source, 'ai');
+  assert.equal(r.queries.length, 2);
+  assert.equal(r.queries[1].remote, true);
 });
 
 test('templateAnswer composes from profile facts by category', () => {

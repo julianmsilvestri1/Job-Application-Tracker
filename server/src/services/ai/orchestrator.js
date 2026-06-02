@@ -6,6 +6,12 @@
 // tasks can be unit-tested against an in-memory database.
 import crypto from 'node:crypto';
 import defaultDb from '../../db.js';
+import {
+  candidateKeywords,
+  heuristicScore,
+  heuristicPositioning,
+  heuristicQueries,
+} from './heuristics.js';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
@@ -196,6 +202,271 @@ export async function answerQuestion({ job = {}, question, db = defaultDb, refre
       source: 'template',
       warning: err.message,
     };
+  }
+}
+
+// --- Phase 3: personalized discovery ---------------------------------------
+
+// Stable key for a posting (used as the job_scores cache key).
+export function jobKey(job = {}) {
+  if (job.source && job.externalId) return `${job.source}:${job.externalId}`;
+  if (job.url) return `url:${job.url}`;
+  return `ctl:${`${job.company || ''}|${job.title || ''}|${job.location || ''}`.toLowerCase().trim()}`;
+}
+
+// Hash of the candidate context — changing the profile/resume invalidates cache.
+export function profileHash(contextText = '') {
+  return crypto.createHash('sha256').update(contextText).digest('hex').slice(0, 24);
+}
+
+const SCORE_SCHEMA = {
+  type: 'object',
+  properties: {
+    results: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          job_key: { type: 'string' },
+          score: { type: 'integer', minimum: 0, maximum: 100 },
+          reasons: { type: 'array', items: { type: 'string' } },
+          gaps: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['job_key', 'score', 'reasons', 'gaps'],
+      },
+    },
+  },
+  required: ['results'],
+};
+
+function chunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+function clampScore(n) {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(100, v));
+}
+
+/**
+ * Score how well each posting fits the candidate, with explainable reasons/gaps.
+ * Cached per (job_key, profile_hash) in the job_scores table; only uncached jobs
+ * reach the AI, and AI calls are batched. Every job always gets a score — the
+ * heuristic backs the AI path (no key, API error, or a job the model omitted).
+ *
+ * Returns scores aligned to the input `jobs`:
+ *   [{ job_key, score, reasons[], gaps[], source: 'cache'|'ai'|'heuristic' }]
+ */
+export async function scoreJobs({ jobs = [], db = defaultDb, refresh = false, batchSize = 8 } = {}) {
+  if (!Array.isArray(jobs) || jobs.length === 0) return [];
+  const ctx = await buildCandidateContext({ includeResume: true, db });
+  const candidate = candidateKeywords(ctx);
+  const phash = profileHash(ctx.text);
+
+  const keyed = jobs.map((job) => ({ job, key: jobKey(job) }));
+  const byKey = new Map();
+
+  const readCached = db.prepare('SELECT * FROM job_scores WHERE job_key = ? AND profile_hash = ?');
+  const writeCached = db.prepare(`
+    INSERT INTO job_scores (job_key, profile_hash, score, reasons, gaps, method, created_at)
+    VALUES (@job_key, @profile_hash, @score, @reasons, @gaps, @method, datetime('now'))
+    ON CONFLICT(job_key, profile_hash) DO UPDATE SET
+      score = excluded.score, reasons = excluded.reasons, gaps = excluded.gaps,
+      method = excluded.method, created_at = excluded.created_at
+  `);
+
+  const persist = (key, result, method) => {
+    try {
+      writeCached.run({
+        job_key: key, profile_hash: phash, score: result.score,
+        reasons: JSON.stringify(result.reasons || []), gaps: JSON.stringify(result.gaps || []),
+        method,
+      });
+    } catch { /* cache write is best-effort */ }
+  };
+
+  // 1. Serve from the DB cache where possible.
+  const toScore = [];
+  for (const { job, key } of keyed) {
+    if (!refresh) {
+      const hit = readCached.get(key, phash);
+      if (hit) {
+        byKey.set(key, {
+          job_key: key, score: hit.score,
+          reasons: parseJson(hit.reasons, []), gaps: parseJson(hit.gaps, []),
+          source: 'cache',
+        });
+        continue;
+      }
+    }
+    toScore.push({ job, key });
+  }
+
+  const heuristicFor = ({ job, key }) => {
+    const r = heuristicScore(candidate, job);
+    persist(key, r, 'heuristic');
+    byKey.set(key, { job_key: key, ...r, source: 'heuristic' });
+  };
+
+  // 2. No key → heuristic for everything still needing a score.
+  if (!aiEnabled()) {
+    toScore.forEach(heuristicFor);
+    return keyed.map(({ key }) => byKey.get(key));
+  }
+
+  // 3. AI path, batched. Any batch that fails (or omits a job) falls back.
+  const system =
+    'You are a precise technical recruiter. Score how well the candidate fits ' +
+    'each job from 0 to 100. Base the score ONLY on the candidate context vs. the ' +
+    'job. "reasons" must cite concrete candidate strengths that match; "gaps" must ' +
+    'cite concrete requirements the candidate appears to be missing. Be calibrated ' +
+    'and consistent: a strong match is 80+, a stretch is 40–60, a poor fit is <30.';
+
+  for (const batch of chunk(toScore, batchSize)) {
+    const jobsBlock = batch.map(({ job, key }) =>
+      `--- job_key: ${key}\nTitle: ${job.title || ''}\nCompany: ${job.company || ''}\n` +
+      `Location: ${job.location || 'n/a'}\nDescription: ${(job.description || '').slice(0, 1200)}`,
+    ).join('\n\n');
+    const user =
+      `=== CANDIDATE ===\n${ctx.text}\n\n=== JOBS (${batch.length}) ===\n${jobsBlock}\n\n` +
+      'Return one result per job_key, echoing the job_key exactly.';
+
+    let parsed = null;
+    try {
+      parsed = await complete({ system, user, maxTokens: 1500, jsonSchema: SCORE_SCHEMA });
+    } catch { parsed = null; }
+
+    const results = new Map((parsed?.results || []).map((r) => [String(r.job_key), r]));
+    for (const item of batch) {
+      const r = results.get(item.key);
+      if (r) {
+        const norm = {
+          score: clampScore(r.score),
+          reasons: Array.isArray(r.reasons) ? r.reasons.filter(Boolean) : [],
+          gaps: Array.isArray(r.gaps) ? r.gaps.filter(Boolean) : [],
+        };
+        persist(item.key, norm, 'ai');
+        byKey.set(item.key, { job_key: item.key, ...norm, source: 'ai' });
+      } else {
+        heuristicFor(item); // model omitted this job → heuristic
+      }
+    }
+  }
+
+  return keyed.map(({ key }) => byKey.get(key));
+}
+
+const POSITIONING_SCHEMA = {
+  type: 'object',
+  properties: {
+    headlines: { type: 'array', items: { type: 'string' } },
+    targetTitles: { type: 'array', items: { type: 'string' } },
+    keywordStrategy: { type: 'array', items: { type: 'string' } },
+    summaryRewrite: { type: 'string' },
+  },
+  required: ['headlines', 'targetTitles', 'keywordStrategy', 'summaryRewrite'],
+};
+
+// Brand/positioning guidance for the candidate (headline variants, target titles,
+// keyword strategy, an optional summary rewrite). Heuristic fallback always
+// returns non-empty arrays so the Profile panel is never blank.
+export async function positioning({ db = defaultDb, refresh = false } = {}) {
+  const ctx = await buildCandidateContext({ includeResume: true, db });
+  const fallback = () => ({ ...heuristicPositioning(ctx), source: 'heuristic' });
+  if (!aiEnabled()) return fallback();
+
+  const key = cacheKey('positioning', [ctx.text]);
+  if (!refresh) {
+    const cached = getCached(key);
+    if (cached) return cached;
+  }
+
+  const system =
+    'You are an expert career coach and resume strategist. From the candidate ' +
+    'context, propose concrete, specific positioning. Headlines are punchy ' +
+    '(<=12 words). targetTitles are real job titles to search for. ' +
+    'keywordStrategy lists ATS keywords worth featuring. summaryRewrite is a ' +
+    'tight 2–3 sentence professional summary in the first person. Use only facts ' +
+    'present in the context.';
+  const user = `=== CANDIDATE ===\n${ctx.text}\n\nProvide positioning suggestions.`;
+
+  try {
+    const out = await complete({ system, user, maxTokens: 800, jsonSchema: POSITIONING_SCHEMA });
+    if (!out || !Array.isArray(out.headlines) || out.headlines.length === 0) return fallback();
+    const result = {
+      headlines: out.headlines.filter(Boolean).slice(0, 6),
+      targetTitles: (out.targetTitles || []).filter(Boolean).slice(0, 8),
+      keywordStrategy: (out.keywordStrategy || []).filter(Boolean).slice(0, 12),
+      summaryRewrite: String(out.summaryRewrite || '').trim() || heuristicPositioning(ctx).summaryRewrite,
+      source: 'ai',
+    };
+    setCached(key, result);
+    return result;
+  } catch (err) {
+    return { ...fallback(), warning: err.message };
+  }
+}
+
+const QUERIES_SCHEMA = {
+  type: 'object',
+  properties: {
+    queries: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+          location: { type: 'string' },
+          remote: { type: 'boolean' },
+        },
+        required: ['query'],
+      },
+    },
+    rationale: { type: 'string' },
+  },
+  required: ['queries'],
+};
+
+// Expand a (possibly vague) search intent into several board-appropriate queries.
+export async function planQueries({ intent = '', db = defaultDb, refresh = false } = {}) {
+  const ctx = await buildCandidateContext({ includeResume: false, db });
+  const fallback = () => ({ ...heuristicQueries(ctx, intent), source: 'heuristic' });
+  if (!aiEnabled()) return fallback();
+
+  const key = cacheKey('planQueries', [ctx.text, intent]);
+  if (!refresh) {
+    const cached = getCached(key);
+    if (cached) return cached;
+  }
+
+  const system =
+    'You turn a job seeker\'s intent into 3–6 concrete search queries for job ' +
+    'boards. Each query is a short keyword phrase (no boolean operators). Vary ' +
+    'seniority and synonyms to widen coverage while staying relevant to the ' +
+    'candidate. Set location/remote only when clearly implied.';
+  const user =
+    `=== CANDIDATE ===\n${ctx.text}\n\n=== INTENT ===\n${intent || '(none given — infer from the profile)'}\n\n` +
+    'Return the queries and a one-line rationale.';
+
+  try {
+    const out = await complete({ system, user, maxTokens: 600, jsonSchema: QUERIES_SCHEMA });
+    const queries = (out?.queries || [])
+      .map((q) => ({
+        query: String(q.query || '').trim(),
+        location: q.location ? String(q.location).trim() : undefined,
+        remote: typeof q.remote === 'boolean' ? q.remote : undefined,
+      }))
+      .filter((q) => q.query)
+      .slice(0, 6);
+    if (queries.length === 0) return fallback();
+    const result = { queries, rationale: String(out.rationale || '').trim(), source: 'ai' };
+    setCached(key, result);
+    return result;
+  } catch (err) {
+    return { ...fallback(), warning: err.message };
   }
 }
 

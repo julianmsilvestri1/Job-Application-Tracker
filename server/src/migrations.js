@@ -123,6 +123,42 @@ export const migrations = [
       CREATE INDEX IF NOT EXISTS idx_answers_app ON application_answers(application_id);
     `);
   },
+
+  // --- Migration 4: AI job-fit score cache (Unit 3.1) ----------------------
+  // Scoring is the priciest AI call, so results are cached by the posting and a
+  // hash of the candidate context: changing the profile invalidates old scores.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS job_scores (
+        job_key      TEXT NOT NULL,       -- source:externalId
+        profile_hash TEXT NOT NULL,       -- hash of the candidate context
+        score        INTEGER DEFAULT 0,   -- 0..100
+        reasons      TEXT DEFAULT '[]',   -- JSON array of strings
+        gaps         TEXT DEFAULT '[]',   -- JSON array of strings
+        method       TEXT DEFAULT 'ai',   -- ai | heuristic
+        created_at   TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (job_key, profile_hash)
+      );
+    `);
+  },
+
+  // --- Migration 5: search preferences (Unit 3.2) --------------------------
+  // Single-row table (id = 1) that drives the "Recommended for you" feed.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS search_preferences (
+        id          INTEGER PRIMARY KEY CHECK (id = 1),
+        titles      TEXT DEFAULT '[]',    -- JSON array
+        locations   TEXT DEFAULT '[]',    -- JSON array
+        keywords    TEXT DEFAULT '[]',    -- JSON array
+        remote_only INTEGER DEFAULT 0,
+        min_salary  TEXT DEFAULT '',
+        sources     TEXT DEFAULT '[]',    -- empty = all
+        updated_at  TEXT DEFAULT (datetime('now'))
+      );
+      INSERT OR IGNORE INTO search_preferences (id) VALUES (1);
+    `);
+  },
 ];
 
 export function runMigrations(db) {

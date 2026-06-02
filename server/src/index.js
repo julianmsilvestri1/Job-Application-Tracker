@@ -13,6 +13,7 @@ import jobsRouter from './routes/jobs.js';
 import applicationsRouter from './routes/applications.js';
 import answersRouter from './routes/answers.js';
 import assistantRouter from './routes/assistant.js';
+import preferencesRouter from './routes/preferences.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -28,6 +29,7 @@ app.use('/api/jobs', jobsRouter);
 app.use('/api/applications', applicationsRouter);
 app.use('/api/answers', answersRouter);
 app.use('/api/assistant', assistantRouter);
+app.use('/api/preferences', preferencesRouter);
 
 // Serve the built client in production (npm run build && npm start).
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');

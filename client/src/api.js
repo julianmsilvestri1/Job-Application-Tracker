@@ -37,6 +37,9 @@ export const api = {
   // Jobs
   getProviders: () => request('/jobs/providers'),
   searchJobs: (params) => request(`/jobs/search?${new URLSearchParams(params)}`),
+  scoreJobs: (jobs, refresh = false) =>
+    request('/jobs/score', { method: 'POST', body: JSON.stringify({ jobs, refresh }) }),
+  getRecommended: (limit) => request(`/jobs/recommended${limit ? `?limit=${limit}` : ''}`),
 
   // Applications
   getApplications: (status) => request(`/applications${status ? `?status=${status}` : ''}`),
@@ -53,9 +56,15 @@ export const api = {
   getOrphanedAnswers: () => request('/answers/orphaned'),
   deleteAnswer: (id) => request(`/answers/${id}`, { method: 'DELETE' }),
 
+  // Preferences (Phase 3)
+  getPreferences: () => request('/preferences'),
+  updatePreferences: (b) => request('/preferences', { method: 'PUT', body: JSON.stringify(b) }),
+
   // Assistant
   assistantStatus: () => request('/assistant/status'),
   getAutofill: () => request('/assistant/autofill'),
   generateCoverLetter: (b) => request('/assistant/cover-letter', { method: 'POST', body: JSON.stringify(b) }),
   answerQuestion: (b) => request('/assistant/answer', { method: 'POST', body: JSON.stringify(b) }),
+  getPositioning: (refresh = false) => request(`/assistant/positioning${refresh ? '?refresh=true' : ''}`),
+  planQueries: (intent) => request(`/assistant/plan-queries?intent=${encodeURIComponent(intent || '')}`),
 };

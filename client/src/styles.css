@@ -162,3 +162,44 @@ textarea { resize: vertical; min-height: 80px; }
 .tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
 .tab { padding: 8px 14px; border-radius: 8px; cursor: pointer; color: var(--muted); background: var(--surface); border: 1px solid var(--border); font-size: 13px; }
 .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* --- Phase 3: discovery ------------------------------------------------- */
+
+/* Fit badge (explainable job-fit score) */
+.fit-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  border-radius: 999px; padding: 2px 4px 2px 10px; cursor: pointer;
+  font-size: 12px; font-weight: 700;
+}
+.fit-badge .fit-num { letter-spacing: 0.2px; }
+.fit-badge .fit-caret { color: var(--muted); font-weight: 400; }
+.fit-badge.tier-strong { border-color: #1e5a3a; color: #6fe0a0; background: #14241b; }
+.fit-badge.tier-good   { border-color: #4a5a1e; color: #cfe06f; background: #21241432; }
+.fit-badge.tier-stretch{ border-color: #5a4a1e; color: #e0c46f; background: #241f14; }
+.fit-badge.tier-low    { border-color: #5a2b2b; color: #e08a8a; background: #241414; }
+.fit-badge .fit-src { font-size: 10px; font-weight: 600; opacity: 0.7; text-transform: uppercase; }
+
+.fit-detail {
+  margin-top: 10px; border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px; background: var(--surface-2); font-size: 13px;
+}
+.fit-detail h5 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }
+.fit-detail ul { margin: 0 0 12px; padding-left: 18px; }
+.fit-detail ul:last-child { margin-bottom: 0; }
+.fit-detail li.good::marker { color: var(--success); }
+.fit-detail li.gap::marker { color: var(--warning); }
+
+/* Positioning panel */
+.pos-group { margin-bottom: 18px; }
+.pos-group:last-child { margin-bottom: 0; }
+.pos-group h4 { margin: 0 0 8px; font-size: 14px; }
+.pos-list { display: flex; flex-direction: column; gap: 8px; }
+.pos-list .autofill-item { padding: 8px 0; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: default;
+}
+.chip.action { cursor: pointer; }
+.chip.action:hover { border-color: var(--primary); color: var(--text); }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { useToast } from '../components/Toaster.jsx';
 
@@ -24,10 +25,12 @@ export default function Profile() {
   return (
     <div>
       <h1 className="page-title">My Profile</h1>
-      <p className="page-sub">This powers autofill, cover letters and application answers.</p>
+      <p className="page-sub">This powers autofill, cover letters, fit scoring and recommendations.</p>
 
       <PersonalInfo profile={profile} setProfile={setProfile} notify={notify} notifyError={notifyError} />
       <SkillsCard profile={profile} setProfile={setProfile} notify={notify} notifyError={notifyError} />
+      <PositioningCard profile={profile} setProfile={setProfile} notify={notify} notifyError={notifyError} />
+      <JobPreferencesCard notify={notify} notifyError={notifyError} />
       <ExperienceCard items={experiences} reload={load} notify={notify} notifyError={notifyError} />
       <EducationCard items={education} reload={load} notify={notify} notifyError={notifyError} />
       <DocumentsCard documents={documents} reload={load} notify={notify} notifyError={notifyError} />
@@ -40,6 +43,10 @@ export default function Profile() {
 function PersonalInfo({ profile, setProfile, notify, notifyError }) {
   const [form, setForm] = useState(profile);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  // Keep the form in sync if a sibling card updates the profile (e.g. applying
+  // a positioning headline/summary).
+  useEffect(() => { setForm(profile); }, [profile]);
 
   async function save() {
     try {
@@ -112,6 +119,182 @@ function SkillsCard({ profile, setProfile, notify, notifyError }) {
       </div>
       <form className="row" onSubmit={add}>
         <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Add a skill and press Enter" style={{ maxWidth: 300 }} />
+        <button className="btn secondary" type="submit">Add</button>
+      </form>
+    </div>
+  );
+}
+
+// --- Phase 3: positioning suggestions -------------------------------------
+
+function PositioningCard({ profile, setProfile, notify, notifyError }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchIt = useCallback(async (refresh = false) => {
+    setLoading(true);
+    try {
+      setData(await api.getPositioning(refresh));
+    } catch (e) { notifyError(e); }
+    setLoading(false);
+  }, [notifyError]);
+
+  async function applyHeadline(headline) {
+    try {
+      const saved = await api.updateProfile({ headline });
+      setProfile(saved); notify('Headline applied to your profile');
+    } catch (e) { notifyError(e); }
+  }
+  async function applySummary(summary) {
+    try {
+      const saved = await api.updateProfile({ summary });
+      setProfile(saved); notify('Summary applied to your profile');
+    } catch (e) { notifyError(e); }
+  }
+
+  return (
+    <div className="card">
+      <div className="section-actions">
+        <h3 style={{ margin: 0 }}>Positioning & keywords</h3>
+        <div className="row" style={{ gap: 8 }}>
+          {data && (
+            <span className="muted" style={{ fontSize: 12 }}>{data.source === 'ai' ? 'AI' : 'heuristic'}</span>
+          )}
+          {data && <button className="btn small ghost" onClick={() => fetchIt(true)} disabled={loading}>↻ Refresh</button>}
+        </div>
+      </div>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Specific ways to position yourself, derived from your profile and resume.
+      </p>
+
+      {!data && (
+        <button className="btn secondary" onClick={() => fetchIt(false)} disabled={loading}>
+          {loading ? 'Analyzing…' : '✨ Suggest positioning'}
+        </button>
+      )}
+
+      {data && (
+        <>
+          <div className="pos-group">
+            <h4>Headline variants</h4>
+            <div className="pos-list">
+              {data.headlines.map((h, i) => (
+                <div key={i} className="autofill-item">
+                  <div className="autofill-value">{h}</div>
+                  <button className="btn small secondary" onClick={() => applyHeadline(h)} disabled={h === profile.headline}>
+                    {h === profile.headline ? 'Current' : 'Use'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {data.targetTitles?.length > 0 && (
+            <div className="pos-group">
+              <h4>Target titles to search</h4>
+              <div className="chips">
+                {data.targetTitles.map((t, i) => (
+                  <Link key={i} className="chip action" to={`/search?q=${encodeURIComponent(t)}`}>🔍 {t}</Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {data.keywordStrategy?.length > 0 && (
+            <div className="pos-group">
+              <h4>Keyword strategy</h4>
+              <div className="chips">
+                {data.keywordStrategy.map((k, i) => (
+                  <span key={i} className="chip action" title="Copy" onClick={() => navigator.clipboard.writeText(k)}>{k}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {data.summaryRewrite && (
+            <div className="pos-group">
+              <h4>Suggested summary</h4>
+              <div className="autofill-item">
+                <div className="autofill-value">{data.summaryRewrite}</div>
+                <button className="btn small secondary" onClick={() => applySummary(data.summaryRewrite)}>Use</button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// --- Phase 3: job preferences (drives "Recommended for you") ---------------
+
+const PREF_BLANK = { titles: [], locations: [], keywords: [], remote_only: false, min_salary: '' };
+
+function JobPreferencesCard({ notify, notifyError }) {
+  const [prefs, setPrefs] = useState(null);
+
+  useEffect(() => {
+    api.getPreferences().then((p) => setPrefs({ ...PREF_BLANK, ...p })).catch(notifyError);
+  }, [notifyError]);
+
+  async function persist(next) {
+    setPrefs(next);
+    try {
+      const saved = await api.updatePreferences(next);
+      setPrefs({ ...PREF_BLANK, ...saved });
+      notify('Preferences saved');
+    } catch (e) { notifyError(e); }
+  }
+
+  if (!prefs) return null;
+
+  return (
+    <div className="card">
+      <h3>Job preferences</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Power the <Link to="/dashboard">Recommended for you</Link> feed. Add the titles and keywords you want surfaced.
+      </p>
+
+      <TagList label="Target titles" placeholder="e.g. Frontend Engineer"
+        values={prefs.titles} onChange={(titles) => persist({ ...prefs, titles })} />
+      <TagList label="Keywords" placeholder="e.g. React, TypeScript"
+        values={prefs.keywords} onChange={(keywords) => persist({ ...prefs, keywords })} />
+      <TagList label="Locations" placeholder="e.g. Remote, New York"
+        values={prefs.locations} onChange={(locations) => persist({ ...prefs, locations })} />
+
+      <div className="row" style={{ marginTop: 8 }}>
+        <div className="checkbox-row">
+          <input id="pref-remote" type="checkbox" checked={prefs.remote_only}
+            onChange={(e) => persist({ ...prefs, remote_only: e.target.checked })} />
+          <label htmlFor="pref-remote">Remote only</label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Reusable add/remove tag list used by Job preferences.
+function TagList({ label, placeholder, values, onChange }) {
+  const [input, setInput] = useState('');
+  function add(e) {
+    e.preventDefault();
+    const v = input.trim();
+    if (v && !values.includes(v)) onChange([...values, v]);
+    setInput('');
+  }
+  return (
+    <div className="field">
+      <label>{label}</label>
+      <div className="tag-input-tags">
+        {values.map((v) => (
+          <span className="tag" key={v}>{v}
+            <button onClick={() => onChange(values.filter((x) => x !== v))}>✕</button>
+          </span>
+        ))}
+        {values.length === 0 && <span className="muted">None yet.</span>}
+      </div>
+      <form className="row" onSubmit={add}>
+        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={placeholder} style={{ maxWidth: 300 }} />
         <button className="btn secondary" type="submit">Add</button>
       </form>
     </div>

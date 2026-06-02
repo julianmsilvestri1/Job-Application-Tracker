@@ -109,9 +109,10 @@ conventions in [README.md](./README.md).
 
 ---
 
-## Phase exit criteria
-- [ ] Jobs sortable by explainable fit score (AI + heuristic fallback).
-- [ ] Dashboard "Recommended for you" driven by preferences/profile.
-- [ ] Positioning suggestions actionable from Profile.
-- [ ] Query planning improves search coverage.
-- [ ] Scoring cached; token cost bounded by batching + cache.
+## Phase exit criteria — ✅ complete
+See [`phase-3-index.md`](./phase-3-index.md) for the as-built execution plan.
+- [x] Jobs sortable by explainable fit score (AI + heuristic fallback).
+- [x] Dashboard "Recommended for you" driven by preferences/profile.
+- [x] Positioning suggestions actionable from Profile.
+- [x] Query planning improves search coverage.
+- [x] Scoring cached; token cost bounded by batching + cache.

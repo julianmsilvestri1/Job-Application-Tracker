@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import AssistantModal from '../components/AssistantModal.jsx';
 import AutofillPanel from '../components/AutofillPanel.jsx';
+import JobCard from '../components/JobCard.jsx';
 import { useToast } from '../components/Toaster.jsx';
 
 export default function Search() {
@@ -11,6 +12,9 @@ export default function Search() {
   const [jobs, setJobs] = useState([]);
   const [errors, setErrors] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [scoring, setScoring] = useState(false);
+  const [improving, setImproving] = useState(false);
+  const [sortByFit, setSortByFit] = useState(false);
   const [searched, setSearched] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [assistJob, setAssistJob] = useState(null);
@@ -23,6 +27,19 @@ export default function Search() {
   useEffect(() => {
     api.assistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch((e) => toast(e.message, 'error'));
     api.getProviders().then((p) => setProviders(p.filter((x) => x.configured))).catch((e) => toast(e.message, 'error'));
+
+    // Deep-link support: /search?q=React+Engineer&location=Remote auto-runs once.
+    const params = new URLSearchParams(window.location.search);
+    const initialQ = params.get('q');
+    const initialLoc = params.get('location');
+    if (!initialQ && !initialLoc) return;
+    if (initialQ) setQ(initialQ);
+    if (initialLoc) setLocation(initialLoc);
+    setLoading(true); setSearched(true);
+    api.searchJobs({ q: initialQ || '', location: initialLoc || '', remote: 'false' })
+      .then((r) => { setJobs(r.jobs); setErrors(r.errors || []); })
+      .catch((err) => { setErrors([{ source: 'app', message: err.message }]); setJobs([]); })
+      .finally(() => setLoading(false));
   }, [toast]);
 
   function toggleSource(id) {
@@ -31,7 +48,7 @@ export default function Search() {
 
   async function doSearch(e) {
     e?.preventDefault();
-    setLoading(true); setSearched(true);
+    setLoading(true); setSearched(true); setSortByFit(false);
     try {
       const params = { q, location, remote: String(remote) };
       if (selected.length) params.sources = selected.join(',');
@@ -41,6 +58,66 @@ export default function Search() {
       setErrors([{ source: 'app', message: err.message }]); setJobs([]);
     }
     setLoading(false);
+  }
+
+  // Score the current results, attach a `fit` to each, and sort by it.
+  async function rankByFit() {
+    if (jobs.length === 0) return;
+    setScoring(true);
+    try {
+      const { scores } = await api.scoreJobs(jobs);
+      const byKey = new Map(scores.map((s) => [s.job_key, s]));
+      const next = jobs.map((j) => ({ ...j, fit: byKey.get(`${j.source}:${j.externalId}`) || j.fit || null }));
+      next.sort((a, b) => (b.fit?.score || 0) - (a.fit?.score || 0));
+      setJobs(next);
+      setSortByFit(true);
+      notify(aiEnabled ? 'Ranked by AI fit' : 'Ranked by fit (heuristic)');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    setScoring(false);
+  }
+
+  function toggleSort() {
+    if (!sortByFit) { rankByFit(); return; }
+    setSortByFit(false);
+    // Restore recency order.
+    setJobs((prev) => [...prev].sort((a, b) => (Date.parse(b.postedAt) || 0) - (Date.parse(a.postedAt) || 0)));
+  }
+
+  // Expand a vague query into several board-friendly queries and merge results.
+  async function improveSearch() {
+    setImproving(true); setSearched(true);
+    try {
+      const plan = await api.planQueries(q);
+      if (plan.rationale) toast(plan.rationale, 'info');
+      const sources = selected.length ? selected.join(',') : undefined;
+      const results = await Promise.all(plan.queries.slice(0, 5).map((pq) =>
+        api.searchJobs({
+          q: pq.query,
+          location: pq.location || location,
+          remote: String(pq.remote ?? remote),
+          ...(sources ? { sources } : {}),
+        }).catch(() => ({ jobs: [], errors: [] })),
+      ));
+      const seen = new Set();
+      const merged = [];
+      const errs = [];
+      for (const r of results) {
+        errs.push(...(r.errors || []));
+        for (const j of (r.jobs || [])) {
+          const k = `${j.source}|${j.externalId}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          merged.push(j);
+        }
+      }
+      setJobs(merged); setErrors(errs); setSortByFit(false);
+      notify(`Expanded into ${plan.queries.length} searches · ${merged.length} jobs`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    setImproving(false);
   }
 
   async function save(job, status) {
@@ -94,6 +171,9 @@ export default function Search() {
           <button className="btn" type="submit" disabled={loading}>
             {loading ? 'Searching…' : 'Search jobs'}
           </button>
+          <button type="button" className="btn secondary" onClick={improveSearch} disabled={improving}>
+            {improving ? 'Improving…' : '✨ Improve my search'}
+          </button>
           <button type="button" className="btn secondary" onClick={() => setShowAutofill(true)}>
             ⚡ Autofill helper
           </button>
@@ -125,39 +205,30 @@ export default function Search() {
         <div className="banner" key={i}>{er.source}: {er.message}</div>
       ))}
 
-      {searched && !loading && jobs.length === 0 && (
+      {jobs.length > 0 && (
+        <div className="section-actions">
+          <span className="muted">{jobs.length} result{jobs.length === 1 ? '' : 's'}</span>
+          <button
+            className={`btn small ${sortByFit ? '' : 'secondary'}`}
+            onClick={toggleSort}
+            disabled={scoring}
+          >
+            {scoring ? 'Scoring…' : sortByFit ? '★ Sorted by fit' : '☆ Sort by fit'}
+          </button>
+        </div>
+      )}
+
+      {searched && !loading && !improving && jobs.length === 0 && (
         <div className="empty">No jobs found. Try different keywords, or add API keys for more sources.</div>
       )}
 
       {jobs.map((job) => (
-        <div className="job" key={`${job.source}-${job.externalId}`}>
-          <div className="job-head">
-            <div>
-              <h3 className="job-title">{job.title}</h3>
-              <div className="job-company">{job.company}</div>
-            </div>
-            {job.trackedStatus && <span className={`badge ${job.trackedStatus}`}>{job.trackedStatus}</span>}
-          </div>
-          <div className="job-meta">
-            <span className="badge source">{job.source}</span>
-            {job.location && <span className="muted">📍 {job.location}</span>}
-            {job.remote && <span className="muted">🏠 Remote</span>}
-            {job.salary && <span className="muted">💰 {job.salary}</span>}
-          </div>
-          {job.description && <p className="job-desc">{job.description.slice(0, 220)}…</p>}
-          <div className="job-actions">
-            <a className="btn small" href={job.url} target="_blank" rel="noreferrer">Apply ↗</a>
-            <button className="btn small secondary" onClick={() => save(job, 'saved')} disabled={job.trackedStatus === 'saved'}>
-              Save
-            </button>
-            <button className="btn small secondary" onClick={() => save(job, 'applied')}>
-              Mark applied
-            </button>
-            <button className="btn small secondary" onClick={() => setAssistJob(job)}>
-              ✍️ Assistant
-            </button>
-          </div>
-        </div>
+        <JobCard
+          key={`${job.source}-${job.externalId}`}
+          job={job}
+          onSave={save}
+          onAssist={setAssistJob}
+        />
       ))}
 
       {assistJob && (

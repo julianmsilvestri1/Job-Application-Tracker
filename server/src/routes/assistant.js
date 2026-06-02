@@ -1,12 +1,30 @@
 import { Router } from 'express';
 import db from '../db.js';
 import { getProfile } from './profile.js';
-import { coverLetter, answerQuestion, aiEnabled } from '../services/ai/orchestrator.js';
+import { coverLetter, answerQuestion, positioning, planQueries, aiEnabled } from '../services/ai/orchestrator.js';
 
 const router = Router();
 
 router.get('/status', (req, res) => {
   res.json({ aiEnabled: aiEnabled() });
+});
+
+// Positioning / branding guidance derived from the profile (Unit 3.3).
+router.get('/positioning', async (req, res) => {
+  try {
+    res.json(await positioning({ refresh: req.query.refresh === 'true' }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Expand a search intent into board-friendly queries (Unit 3.4).
+router.get('/plan-queries', async (req, res) => {
+  try {
+    res.json(await planQueries({ intent: String(req.query.intent || '') }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Flat field map for autofilling application forms (copy-to-clipboard helper).

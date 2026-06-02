@@ -36,6 +36,8 @@ feeds the Phase 6 field resolver. See the
 [master plan](./master-plan-autonomous-apply.md) for the full sequencing, the
 technology pillars, and the unit specs.
 
+Phase 3 as-built detail: [`phase-3-index.md`](./phase-3-index.md).
+
 ---
 
 ## Shared conventions

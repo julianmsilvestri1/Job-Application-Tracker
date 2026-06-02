@@ -125,11 +125,19 @@ answers. 18 server + 2 client tests green.
 
 **Constraint:** stays human-in-the-loop; no auto-submit on Indeed/LinkedIn/ATS.
 
-### Phase 3 — Personalized discovery ⬜
-- ⬜ AI **job-fit score** per posting (explainable: why it matches).
-- ⬜ **Recommended for you** feed ranked against profile + resume text.
-- ⬜ **Positioning suggestions**: headline variants, title targeting, keyword
-  strategy; AI query expansion/planning for search.
+### Phase 3 — Personalized discovery ✅
+- ✅ AI **job-fit score** per posting (explainable: why it matches / gaps),
+  batched + DB-cached (`job_scores`), with a key-free heuristic fallback.
+- ✅ **Recommended for you** feed ranked against preferences/profile + resume
+  text (`GET /api/jobs/recommended`, `search_preferences`).
+- ✅ **Positioning suggestions**: headline variants, title targeting, keyword
+  strategy, summary rewrite; AI query expansion/planning powers "Improve my
+  search" and the recommended feed.
+
+**Acceptance met:** results sort by explainable fit (`POST /api/jobs/score`,
+`?rank=true`); Dashboard feed driven by preferences/profile; positioning applies
+to the profile in one click; query planning widens coverage; all tasks have
+deterministic fallbacks. 53 server + 10 client tests green.
 
 ### Phase 3.5 — Local RAG / semantic layer ⬜ (next; highest-leverage)
 Realizes the master plan's pillar P1. Spec:

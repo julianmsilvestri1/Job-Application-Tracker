@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
+import JobCard from '../components/JobCard.jsx';
+import AssistantModal from '../components/AssistantModal.jsx';
 import { useToast } from '../components/Toaster.jsx';
 
 const PIPELINE = ['saved', 'applied', 'interviewing', 'offer', 'rejected'];
@@ -36,6 +38,8 @@ export default function Dashboard() {
           ))}
         </div>
       )}
+
+      <Recommended />
 
       <div className="card">
         <div className="section-actions">
@@ -79,6 +83,79 @@ export default function Dashboard() {
           Indeed, LinkedIn-adjacent boards and federal jobs.
         </p>
       </div>
+    </div>
+  );
+}
+
+// Profile/preference-driven feed, ranked by fit.
+function Recommended() {
+  const [state, setState] = useState({ loading: true });
+  const [assistJob, setAssistJob] = useState(null);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const { toast } = useToast();
+
+  function load() {
+    setState({ loading: true });
+    api.getRecommended(8)
+      .then((r) => setState({ loading: false, ...r }))
+      .catch((e) => setState({ loading: false, error: e.message }));
+  }
+
+  useEffect(() => {
+    api.assistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch(() => {});
+    load();
+  }, []);
+
+  async function save(job, status) {
+    try {
+      await api.saveApplication({ ...job, status });
+      setState((s) => ({
+        ...s,
+        jobs: (s.jobs || []).map((j) =>
+          j.externalId === job.externalId && j.source === job.source ? { ...j, trackedStatus: status } : j),
+      }));
+      toast(status === 'applied' ? 'Marked as applied' : 'Saved to tracker', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  const jobs = state.jobs || [];
+
+  return (
+    <div className="card">
+      <div className="section-actions">
+        <h3 style={{ margin: 0 }}>Recommended for you</h3>
+        <div className="row" style={{ gap: 8 }}>
+          {state.derivedFrom && jobs.length > 0 && (
+            <span className="muted" style={{ fontSize: 13 }}>
+              from your {state.derivedFrom === 'preferences' ? 'preferences' : 'profile'}
+            </span>
+          )}
+          <button className="btn small secondary" onClick={load} disabled={state.loading}>
+            {state.loading ? 'Loading…' : '↻ Refresh'}
+          </button>
+        </div>
+      </div>
+
+      {state.loading && <p className="muted">Finding roles that fit you…</p>}
+      {state.error && <div className="banner">{state.error}</div>}
+
+      {!state.loading && !state.error && jobs.length === 0 && (
+        <p className="muted">
+          {state.note || (
+            <>Add <Link to="/profile">job preferences or a headline</Link> to get personalized recommendations.</>
+          )}
+        </p>
+      )}
+
+      {jobs.map((job) => (
+        <JobCard key={`${job.source}-${job.externalId}`} job={job} onSave={save} onAssist={setAssistJob} />
+      ))}
+
+      {assistJob && (
+        <AssistantModal job={assistJob} aiEnabled={aiEnabled} onClose={() => setAssistJob(null)} />
+      )}
     </div>
   );
 }

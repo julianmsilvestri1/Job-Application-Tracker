@@ -89,6 +89,11 @@ the rest of the app calls into.
 > **Build-ready detail:** each phase below has a step-by-step implementation spec
 > (work units, file paths, schema/migrations, API contracts, prompts, tests,
 > acceptance criteria) under [`docs/plans/`](./docs/plans/README.md).
+>
+> **North star:** the
+> [autonomous-apply master plan](./docs/plans/master-plan-autonomous-apply.md)
+> sequences every phase toward "enter your info once; the AI tailors, fills, and
+> applies for you" and defines the new **Phase 6 — Autonomous Apply Engine**.
 
 
 ### Phase 1.5 — Intelligence foundation ✅ (highest leverage)

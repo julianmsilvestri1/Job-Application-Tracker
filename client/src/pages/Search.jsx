@@ -40,7 +40,7 @@ export default function Search() {
       const params = { q, location, remote: String(remote), rank: 'true' };
       if (selected.length) params.sources = selected.join(',');
       const r = await api.searchJobs(params);
-      setJobs(sortJobs(r.jobs, sortByFit)); setErrors(r.errors || []);
+      setJobs(sortJobs(r.jobs, sortByFit)); setErrors(uniqueErrors(r.errors || []));
     } catch (err) {
       setErrors([{ source: 'app', message: err.message }]); setJobs([]);
     }
@@ -71,7 +71,7 @@ export default function Search() {
       const merged = mergeJobs(batches.flatMap((r) => r.jobs || []));
       setJobs(sortJobs(merged, true));
       setSortByFit(true);
-      setErrors(batches.flatMap((r) => r.errors || []));
+      setErrors(uniqueErrors(batches.flatMap((r) => r.errors || [])));
       notify('Search improved with AI query planning');
     } catch (err) {
       setErrors([{ source: 'assistant', message: err.message }]); setJobs([]);
@@ -281,4 +281,14 @@ function fitBand(score) {
   if (score >= 80) return 'high';
   if (score >= 60) return 'mid';
   return 'low';
+}
+
+function uniqueErrors(errors) {
+  const seen = new Set();
+  return errors.filter((error) => {
+    const key = `${error.source}:${error.message}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

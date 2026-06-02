@@ -21,7 +21,7 @@ export default function Dashboard() {
     api.getApplications().then((a) => setRecent(a.slice(0, 5))).catch((e) => toast(e.message, 'error'));
     api.getProviders().then(setProviders).catch((e) => toast(e.message, 'error'));
     api.getRecommendedJobs({ limit: '6' }).then((r) => {
-      setRecommended(r.jobs || []);
+      setRecommended(sortByFit(r.jobs || []));
       setRecommendationMeta(r);
     }).catch((e) => toast(e.message, 'error'));
     api.assistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch(() => {});
@@ -154,4 +154,12 @@ function fitBand(score) {
   if (score >= 80) return 'high';
   if (score >= 60) return 'mid';
   return 'low';
+}
+
+function sortByFit(jobs) {
+  return [...jobs].sort((a, b) => {
+    const fit = (b.fit?.score ?? -1) - (a.fit?.score ?? -1);
+    if (fit !== 0) return fit;
+    return (Date.parse(b.postedAt) || 0) - (Date.parse(a.postedAt) || 0);
+  });
 }

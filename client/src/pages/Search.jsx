@@ -23,6 +23,7 @@ export default function Search() {
   const [planning, setPlanning] = useState(false);
   const { toast } = useToast();
   const notify = (m) => toast(m, 'success');
+  const visibleJobs = sortJobs(jobs, sortByFit);
 
   useEffect(() => {
     api.assistantStatus().then((s) => setAiEnabled(s.aiEnabled)).catch((e) => toast(e.message, 'error'));
@@ -40,7 +41,7 @@ export default function Search() {
       const params = { q, location, remote: String(remote), rank: 'true' };
       if (selected.length) params.sources = selected.join(',');
       const r = await api.searchJobs(params);
-      setJobs(sortJobs(r.jobs, sortByFit)); setErrors(uniqueErrors(r.errors || []));
+      setJobs(r.jobs || []); setErrors(uniqueErrors(r.errors || []));
     } catch (err) {
       setErrors([{ source: 'app', message: err.message }]); setJobs([]);
     }
@@ -69,7 +70,7 @@ export default function Search() {
         return api.searchJobs(params);
       }));
       const merged = mergeJobs(batches.flatMap((r) => r.jobs || []));
-      setJobs(sortJobs(merged, true));
+      setJobs(merged);
       setSortByFit(true);
       setErrors(uniqueErrors(batches.flatMap((r) => r.errors || [])));
       notify('Search improved with AI query planning');
@@ -148,7 +149,6 @@ export default function Search() {
               checked={sortByFit}
               onChange={(e) => {
                 setSortByFit(e.target.checked);
-                setJobs((prev) => sortJobs(prev, e.target.checked));
               }}
             />
             <label htmlFor="fit-sort">Sort by fit</label>
@@ -188,7 +188,7 @@ export default function Search() {
         <div className="empty">No jobs found. Try different keywords, or add API keys for more sources.</div>
       )}
 
-      {jobs.map((job) => (
+      {visibleJobs.map((job) => (
         <div className="job" key={`${job.source}-${job.externalId}`}>
           <div className="job-head">
             <div>

@@ -37,6 +37,20 @@ test('fails gracefully on a corrupt PDF (no throw)', async () => {
   await fs.rm(p, { force: true });
 });
 
+test('extracts text from a generated PDF', async () => {
+  const { PDFDocument, StandardFonts } = await import('pdf-lib');
+  const doc = await PDFDocument.create();
+  const page = doc.addPage();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('Resume Sample Jane Doe', { x: 72, y: 700, size: 12, font });
+  const bytes = await doc.save();
+  const p = await tmpFile('generated.pdf', Buffer.from(bytes));
+  const r = await extractText({ path: p, mimetype: 'application/pdf' });
+  assert.equal(r.status, 'done');
+  assert.match(r.text, /Resume Sample/i);
+  await fs.rm(p, { force: true });
+});
+
 test('empty text yields failed status', async () => {
   const p = await tmpFile('empty.txt', '   \n  ');
   const r = await extractText({ path: p, mimetype: 'text/plain' });

@@ -45,12 +45,33 @@ export default function Search() {
 
   async function save(job, status) {
     try {
-      await api.saveApplication({ ...job, status });
+      const app = await api.saveApplication({ ...job, status });
       setJobs((prev) => prev.map((j) =>
         j.externalId === job.externalId && j.source === job.source
-          ? { ...j, trackedStatus: status } : j));
+          ? { ...j, trackedStatus: status, id: app.id } : j));
       notify(status === 'applied' ? 'Marked as applied' : 'Saved to tracker');
-    } catch (err) { notify(err.message); }
+      return app;
+    } catch (err) {
+      toast(err.message, 'error');
+      return null;
+    }
+  }
+
+  async function saveCoverLetterFromSearch(text) {
+    if (!assistJob) return;
+    try {
+      let appId = assistJob.id;
+      if (!appId) {
+        const app = await save(assistJob, 'saved');
+        if (!app?.id) return;
+        appId = app.id;
+        setAssistJob((j) => (j ? { ...j, id: appId } : j));
+      }
+      await api.updateApplication(appId, { cover_letter: text });
+      notify('Cover letter saved to tracker');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   return (
@@ -140,7 +161,12 @@ export default function Search() {
       ))}
 
       {assistJob && (
-        <AssistantModal job={assistJob} aiEnabled={aiEnabled} onClose={() => setAssistJob(null)} />
+        <AssistantModal
+          job={assistJob}
+          aiEnabled={aiEnabled}
+          onClose={() => setAssistJob(null)}
+          onSaveCoverLetter={saveCoverLetterFromSearch}
+        />
       )}
       {showAutofill && <AutofillPanel onClose={() => setShowAutofill(false)} />}
     </div>

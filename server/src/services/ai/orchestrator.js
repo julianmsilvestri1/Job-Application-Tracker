@@ -4,12 +4,41 @@
 //
 // DB access is dependency-injected (defaults to the app singleton) so the
 // tasks can be unit-tested against an in-memory database.
+import crypto from 'node:crypto';
 import defaultDb from '../../db.js';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 const ANTHROPIC_VERSION = '2023-06-01';
 const RESUME_BUDGET = 6000; // chars of resume text injected into context
+const CACHE_TTL_MS = Number(process.env.AI_CACHE_TTL_MS) || 10 * 60 * 1000;
+
+/** @type {Map<string, { value: object, expiresAt: number }>} */
+const responseCache = new Map();
+
+function cacheKey(task, parts) {
+  const payload = parts.filter((p) => p != null).join('\0');
+  const digest = crypto.createHash('sha256').update(payload).digest('hex').slice(0, 24);
+  return `${task}:${digest}`;
+}
+
+function getCached(key) {
+  const hit = responseCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    responseCache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+function setCached(key, value) {
+  responseCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
+export function clearAiCache() {
+  responseCache.clear();
+}
 
 export function aiEnabled() {
   return Boolean(process.env.ANTHROPIC_API_KEY);
@@ -120,8 +149,15 @@ export async function coverLetter({ job, db = defaultDb }) {
     `=== CANDIDATE ===\n${ctx.text}\n\n` +
     `=== JOB ===\nTitle: ${job.title}\nCompany: ${job.company}\n` +
     `Location: ${job.location || 'n/a'}\nDescription: ${(job.description || '').slice(0, 2500)}`;
+
+  const key = cacheKey('coverLetter', [ctx.text, job.title, job.company, job.location, job.description]);
+  const cached = getCached(key);
+  if (cached) return cached;
+
   try {
-    return { text: await complete({ system, user, maxTokens: 900 }), source: 'ai' };
+    const result = { text: await complete({ system, user, maxTokens: 900 }), source: 'ai' };
+    setCached(key, result);
+    return result;
   } catch (err) {
     return { text: templateCoverLetter(ctx.profile, job), source: 'template', warning: err.message };
   }
@@ -141,10 +177,20 @@ export async function answerQuestion({ job = {}, question, db = defaultDb }) {
     (ctx.profile.work_authorization ? `Work authorization: ${ctx.profile.work_authorization}\n` : '') +
     `\n=== JOB ===\n${job.title || ''} at ${job.company || ''}\n\n` +
     `=== QUESTION ===\n${question}\n\nWrite the answer only.`;
+  const key = cacheKey('answerQuestion', [ctx.text, question, job.title, job.company]);
+  const cached = getCached(key);
+  if (cached) return cached;
+
   try {
-    return { text: await complete({ system, user, maxTokens: 500 }), source: 'ai' };
+    const result = { text: await complete({ system, user, maxTokens: 500 }), source: 'ai' };
+    setCached(key, result);
+    return result;
   } catch (err) {
-    return { text: '', source: 'template', warning: err.message };
+    return {
+      text: templateAnswer(ctx.profile, job, question),
+      source: 'template',
+      warning: err.message,
+    };
   }
 }
 

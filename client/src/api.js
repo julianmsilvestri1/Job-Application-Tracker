@@ -50,6 +50,7 @@ export const api = {
   saveAnswerForApp: (applicationId, b) =>
     request(`/applications/${applicationId}/answers`, { method: 'POST', body: JSON.stringify(b) }),
   saveAnswer: (b) => request('/answers', { method: 'POST', body: JSON.stringify(b) }),
+  getOrphanedAnswers: () => request('/answers/orphaned'),
   deleteAnswer: (id) => request(`/answers/${id}`, { method: 'DELETE' }),
 
   // Assistant

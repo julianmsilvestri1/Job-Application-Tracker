@@ -5,22 +5,12 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import db from '../db.js';
-import { extractText } from '../services/documents/extract.js';
+import { queueExtraction, runExtractionForDoc } from '../services/documents/extractionQueue.js';
 
 // Columns returned in lists — excludes the (potentially large) extracted_text.
 const LIST_COLS =
   'id, type, label, original_name, stored_name, mimetype, size, is_default, ' +
   'extraction_status, extraction_error, text_chars, created_at';
-
-async function runExtraction(doc, filePath) {
-  const { text, status, error } = await extractText({ path: filePath, mimetype: doc.mimetype });
-  db.prepare(`
-    UPDATE documents
-    SET extracted_text = @text, extraction_status = @status,
-        extraction_error = @error, text_chars = @chars
-    WHERE id = @id
-  `).run({ id: doc.id, text, status, error, chars: text.length });
-}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
@@ -34,9 +24,9 @@ const storage = multer.diskStorage({
   },
 });
 
+// Legacy .doc (application/msword) is not supported for text extraction — use DOCX or PDF.
 const ALLOWED = new Set([
   'application/pdf',
-  'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
 ]);
@@ -46,7 +36,7 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
   fileFilter: (req, file, cb) => {
     if (ALLOWED.has(file.mimetype)) cb(null, true);
-    else cb(new Error('Unsupported file type. Upload PDF, DOC, DOCX or TXT.'));
+    else cb(new Error('Unsupported file type. Upload PDF, DOCX, or TXT (.doc is not supported).'));
   },
 });
 
@@ -78,12 +68,7 @@ router.post('/', upload.single('file'), async (req, res, next) => {
   });
 
   const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(info.lastInsertRowid);
-  try {
-    await runExtraction(doc, path.join(uploadsDir, doc.stored_name));
-  } catch (err) {
-    next(err);
-    return;
-  }
+  queueExtraction(doc);
   res.status(201).json(db.prepare(`SELECT ${LIST_COLS} FROM documents WHERE id = ?`).get(doc.id));
 });
 
@@ -100,7 +85,7 @@ router.post('/:id/reextract', async (req, res, next) => {
   const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(Number(req.params.id));
   if (!doc) return res.status(404).json({ error: 'Not found' });
   try {
-    await runExtraction(doc, path.join(uploadsDir, doc.stored_name));
+    await runExtractionForDoc(doc);
   } catch (err) {
     next(err);
     return;
@@ -121,7 +106,15 @@ router.put('/:id/default', (req, res) => {
   if (!doc) return res.status(404).json({ error: 'Not found' });
   db.prepare('UPDATE documents SET is_default = 0 WHERE type = ?').run(doc.type);
   db.prepare('UPDATE documents SET is_default = 1 WHERE id = ?').run(doc.id);
-  res.json(db.prepare('SELECT * FROM documents WHERE id = ?').get(doc.id));
+  const updated = db.prepare('SELECT * FROM documents WHERE id = ?').get(doc.id);
+  if (
+    updated.type === 'resume'
+    && updated.extraction_status !== 'done'
+    && updated.mimetype !== 'application/msword'
+  ) {
+    queueExtraction(updated);
+  }
+  res.json(db.prepare(`SELECT ${LIST_COLS} FROM documents WHERE id = ?`).get(doc.id));
 });
 
 router.delete('/:id', (req, res) => {

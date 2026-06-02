@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import './db.js'; // initialize schema on boot
+import { backfillPendingExtractions } from './services/documents/extractionQueue.js';
 import profileRouter from './routes/profile.js';
 import documentsRouter from './routes/documents.js';
 import jobsRouter from './routes/jobs.js';
@@ -43,6 +44,8 @@ app.use((err, req, res, next) => {
   console.error(err);
   res.status(err.status || 400).json({ error: err.message || 'Server error' });
 });
+
+backfillPendingExtractions();
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {

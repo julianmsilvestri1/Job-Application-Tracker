@@ -1,6 +1,6 @@
 # Phase 1.5 — Intelligence Foundation
 
-**Status: ✅ COMPLETE** (Units 1.5.0–1.5.6 shipped & tested).
+**Status: ✅ COMPLETE** (Units 1.5.0–1.5.7 shipped & tested).
 
 **Goal:** make uploaded documents first-class AI context and route all AI through
 one orchestration module. This unblocks Phases 3–4. See conventions in
@@ -9,7 +9,7 @@ one orchestration module. This unblocks Phases 3–4. See conventions in
 **Outcome:** uploading a resume changes generated cover letters; AI is reachable
 from one place; Q&A persists; everything still works with no API key.
 
-**Units (in order):** 1.5.0 → 1.5.1 → 1.5.2 → 1.5.3 → 1.5.4 → 1.5.5 → 1.5.6
+**Units (in order):** 1.5.0 → 1.5.1 → 1.5.2 → 1.5.3 → 1.5.4 → 1.5.5 → 1.5.6 → **1.5.7** (hardening)
 
 ---
 
@@ -181,11 +181,25 @@ from one place; Q&A persists; everything still works with no API key.
 
 ---
 
+## Unit 1.5.7 — Hardening (soundness before Phase Correctness)
+- **Objective:** close gaps from the Phase 1.5 review — reliability, UX, efficiency.
+- **Backend:** orchestrator in-memory cache (10 min TTL) + template fallback on AI answer errors; async document extraction queue + boot backfill; reject `.doc` uploads; re-extract when setting default resume; `GET /api/answers/orphaned`.
+- **Frontend:** global error toasts on mutations; orphan answers on Profile; save cover letter from Search (auto-save job); Autofill load errors surfaced.
+- **Tests:** cache + API-error answer tests; PDF fixture; HTTP answer-route tests; extraction backfill query test.
+- **Commit:** `fix(phase-1.5): harden intelligence foundation before correctness phase`
+
+---
+
 ## Phase exit criteria
 - [x] Resume text demonstrably influences cover letters (test asserts resume text is in the AI request body).
 - [x] All Claude calls flow through `orchestrator.js`; none elsewhere (old service deleted).
 - [x] Q&A persists per application; visible after reload.
+- [x] Orphan Q&A (from search) listable on Profile.
 - [x] No-API-key path returns useful cover letters **and** answers (template fallbacks).
+- [x] AI API errors fall back to templates for answers (not empty text).
+- [x] Orchestrator response cache (10 min TTL) for cover letters and answers.
+- [x] Document extraction is non-blocking on upload; pending docs backfill on server start.
 - [x] Experience/education editable in UI.
-- [x] Load failures are visible (global toaster).
+- [x] Load failures and mutation errors visible (global toaster).
+- [x] Cover letter savable from Search (saves job to tracker if needed).
 - [x] `node --test` (18) + `vitest` (2) green; client build passes.

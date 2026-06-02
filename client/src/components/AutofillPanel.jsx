@@ -1,15 +1,22 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { useToast } from './Toaster.jsx';
 
 // Copy-to-clipboard helper: one click copies a profile field so you can
 // paste it into any external application form (phase-1 autofill).
 export default function AutofillPanel({ onClose }) {
   const [fields, setFields] = useState([]);
   const [copied, setCopied] = useState(null);
+  const { toast } = useToast();
 
   useEffect(() => {
-    api.getAutofill().then((r) => setFields(r.fields)).catch(() => setFields([]));
-  }, []);
+    api.getAutofill()
+      .then((r) => setFields(r.fields))
+      .catch((e) => {
+        setFields([]);
+        toast(e.message, 'error');
+      });
+  }, [toast]);
 
   function copy(field) {
     navigator.clipboard.writeText(field.value);

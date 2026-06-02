@@ -10,6 +10,9 @@
     "start": "node src/index.js",
     "test": "node --test"
   },
+  "devDependencies": {
+    "pdf-lib": "^1.17.1"
+  },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
     "cors": "^2.8.5",

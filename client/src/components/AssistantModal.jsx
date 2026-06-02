@@ -106,10 +106,13 @@ export default function AssistantModal({ job, aiEnabled, onClose, onSaveCoverLet
               style={{ minHeight: 260 }}
               placeholder="Your tailored cover letter will appear here…"
             />
-            {onSaveCoverLetter && (
+            {onSaveCoverLetter && coverLetter && (
               <div className="row" style={{ marginTop: 12 }}>
-                <button className="btn secondary" onClick={() => onSaveCoverLetter(coverLetter)}>
-                  Save to this application
+                <button className="btn secondary" onClick={async () => {
+                  try { await onSaveCoverLetter(coverLetter); }
+                  catch (e) { setWarning(e.message); }
+                }}>
+                  Save to tracker
                 </button>
               </div>
             )}

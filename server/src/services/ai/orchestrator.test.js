@@ -9,6 +9,7 @@ import {
   answerQuestion,
   templateAnswer,
   aiEnabled,
+  clearAiCache,
 } from './orchestrator.js';
 
 function seedDb({ resume } = {}) {
@@ -34,6 +35,7 @@ afterEach(() => {
   if (realKey === undefined) delete process.env.ANTHROPIC_API_KEY;
   else process.env.ANTHROPIC_API_KEY = realKey;
   global.fetch = realFetch;
+  clearAiCache();
 });
 
 test('formatCandidateContext includes profile and resume text', () => {
@@ -75,6 +77,37 @@ test('coverLetter (AI) sends resume text in the request body', async () => {
   assert.equal(r.source, 'ai');
   assert.equal(r.text, 'AI letter');
   assert.match(captured, /SECRET_RESUME_MARKER/);
+});
+
+test('coverLetter uses in-memory cache on repeat calls', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  const db = seedDb();
+  let calls = 0;
+  global.fetch = async () => {
+    calls += 1;
+    return { ok: true, json: async () => ({ content: [{ type: 'text', text: 'Cached letter' }] }) };
+  };
+  const job = { title: 'Eng', company: 'Acme' };
+  const r1 = await coverLetter({ job, db });
+  const r2 = await coverLetter({ job, db });
+  assert.equal(r1.text, 'Cached letter');
+  assert.equal(r2.text, 'Cached letter');
+  assert.equal(calls, 1);
+});
+
+test('answerQuestion falls back to template if the API errors', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  const db = seedDb();
+  global.fetch = async () => ({ ok: false, status: 500, text: async () => 'boom' });
+  const r = await answerQuestion({
+    job: { title: 'Eng', company: 'Globex' },
+    question: 'Why do you want to work here?',
+    db,
+  });
+  assert.equal(r.source, 'template');
+  assert.ok(r.text.length > 0);
+  assert.match(r.text, /Globex/);
+  assert.ok(r.warning.includes('500'));
 });
 
 test('coverLetter falls back to template if the API errors', async () => {

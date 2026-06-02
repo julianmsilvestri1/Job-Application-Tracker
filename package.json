@@ -11,6 +11,7 @@
     "dev:client": "npm run dev --prefix client",
     "build": "npm run build --prefix client",
     "start": "npm run start --prefix server",
+    "pretest": "npm install --prefix client --no-audit --no-fund 2>/dev/null || true",
     "test": "npm run test --prefix server && npm run test --prefix client"
   },
   "devDependencies": {

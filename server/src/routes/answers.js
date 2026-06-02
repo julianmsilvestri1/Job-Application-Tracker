@@ -5,6 +5,16 @@ import db from '../db.js';
 // these handle inline (search-context) answers and deletion.
 const router = Router();
 
+// Answers saved from search before a job is tracked (application_id IS NULL).
+router.get('/orphaned', (req, res) => {
+  const rows = db.prepare(`
+    SELECT * FROM application_answers
+    WHERE application_id IS NULL
+    ORDER BY created_at DESC
+  `).all();
+  res.json(rows);
+});
+
 // Save an answer not tied to a saved application (e.g. from search results).
 router.post('/', (req, res) => {
   const b = req.body || {};

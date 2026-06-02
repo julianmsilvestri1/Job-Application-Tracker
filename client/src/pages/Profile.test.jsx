@@ -8,6 +8,7 @@ vi.mock('../api.js', () => ({
   api: {
     getProfile: vi.fn(),
     getDocuments: vi.fn(),
+    getOrphanedAnswers: vi.fn(),
     updateExperience: vi.fn(),
     updateProfile: vi.fn(),
   },
@@ -26,6 +27,7 @@ beforeEach(() => {
     education: [],
   });
   api.getDocuments.mockResolvedValue([]);
+  api.getOrphanedAnswers.mockResolvedValue([]);
   api.updateExperience.mockResolvedValue({});
 });
 

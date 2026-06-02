@@ -9,6 +9,7 @@ export default function Profile() {
   const [documents, setDocuments] = useState([]);
   const { toast } = useToast();
   const notify = (m) => toast(m, 'success');
+  const notifyError = (e) => toast(e?.message || String(e), 'error');
 
   function load() {
     api.getProfile().then(({ profile, experiences, education }) => {
@@ -25,23 +26,26 @@ export default function Profile() {
       <h1 className="page-title">My Profile</h1>
       <p className="page-sub">This powers autofill, cover letters and application answers.</p>
 
-      <PersonalInfo profile={profile} setProfile={setProfile} notify={notify} />
-      <SkillsCard profile={profile} setProfile={setProfile} notify={notify} />
-      <ExperienceCard items={experiences} reload={load} notify={notify} />
-      <EducationCard items={education} reload={load} notify={notify} />
-      <DocumentsCard documents={documents} reload={load} notify={notify} />
-      <CustomFieldsCard profile={profile} setProfile={setProfile} notify={notify} />
+      <PersonalInfo profile={profile} setProfile={setProfile} notify={notify} notifyError={notifyError} />
+      <SkillsCard profile={profile} setProfile={setProfile} notify={notify} notifyError={notifyError} />
+      <ExperienceCard items={experiences} reload={load} notify={notify} notifyError={notifyError} />
+      <EducationCard items={education} reload={load} notify={notify} notifyError={notifyError} />
+      <DocumentsCard documents={documents} reload={load} notify={notify} notifyError={notifyError} />
+      <OrphanAnswersCard notify={notify} notifyError={notifyError} />
+      <CustomFieldsCard profile={profile} setProfile={setProfile} notify={notify} notifyError={notifyError} />
     </div>
   );
 }
 
-function PersonalInfo({ profile, setProfile, notify }) {
+function PersonalInfo({ profile, setProfile, notify, notifyError }) {
   const [form, setForm] = useState(profile);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   async function save() {
-    const saved = await api.updateProfile(form);
-    setProfile(saved); setForm(saved); notify('Profile saved');
+    try {
+      const saved = await api.updateProfile(form);
+      setProfile(saved); setForm(saved); notify('Profile saved');
+    } catch (e) { notifyError(e); }
   }
 
   return (
@@ -77,14 +81,16 @@ function PersonalInfo({ profile, setProfile, notify }) {
   );
 }
 
-function SkillsCard({ profile, setProfile, notify }) {
+function SkillsCard({ profile, setProfile, notify, notifyError }) {
   const [skills, setSkills] = useState(profile.skills || []);
   const [input, setInput] = useState('');
 
   async function persist(next) {
     setSkills(next);
-    const saved = await api.updateProfile({ skills: next });
-    setProfile(saved); notify('Skills updated');
+    try {
+      const saved = await api.updateProfile({ skills: next });
+      setProfile(saved); notify('Skills updated');
+    } catch (e) { notifyError(e); }
   }
   function add(e) {
     e.preventDefault();
@@ -135,19 +141,26 @@ function ExperienceFields({ draft, setDraft, idPrefix }) {
   );
 }
 
-function ExperienceCard({ items, reload, notify }) {
+function ExperienceCard({ items, reload, notify, notifyError }) {
   const [draft, setDraft] = useState(EXP_BLANK);
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState(EXP_BLANK);
 
   async function add() {
     if (!draft.company && !draft.title) return;
-    await api.addExperience(draft); setDraft(EXP_BLANK); reload(); notify('Experience added');
+    try {
+      await api.addExperience(draft); setDraft(EXP_BLANK); reload(); notify('Experience added');
+    } catch (e) { notifyError(e); }
   }
-  async function del(id) { await api.deleteExperience(id); reload(); }
+  async function del(id) {
+    try { await api.deleteExperience(id); reload(); }
+    catch (e) { notifyError(e); }
+  }
   function startEdit(x) { setEditingId(x.id); setEditDraft({ ...EXP_BLANK, ...x, is_current: !!x.is_current }); }
   async function saveEdit() {
-    await api.updateExperience(editingId, editDraft); setEditingId(null); reload(); notify('Experience updated');
+    try {
+      await api.updateExperience(editingId, editDraft); setEditingId(null); reload(); notify('Experience updated');
+    } catch (e) { notifyError(e); }
   }
 
   return (
@@ -198,19 +211,26 @@ function EducationFields({ draft, setDraft }) {
   );
 }
 
-function EducationCard({ items, reload, notify }) {
+function EducationCard({ items, reload, notify, notifyError }) {
   const [draft, setDraft] = useState(EDU_BLANK);
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState(EDU_BLANK);
 
   async function add() {
     if (!draft.school) return;
-    await api.addEducation(draft); setDraft(EDU_BLANK); reload(); notify('Education added');
+    try {
+      await api.addEducation(draft); setDraft(EDU_BLANK); reload(); notify('Education added');
+    } catch (e) { notifyError(e); }
   }
-  async function del(id) { await api.deleteEducation(id); reload(); }
+  async function del(id) {
+    try { await api.deleteEducation(id); reload(); }
+    catch (e) { notifyError(e); }
+  }
   function startEdit(x) { setEditingId(x.id); setEditDraft({ ...EDU_BLANK, ...x }); }
   async function saveEdit() {
-    await api.updateEducation(editingId, editDraft); setEditingId(null); reload(); notify('Education updated');
+    try {
+      await api.updateEducation(editingId, editDraft); setEditingId(null); reload(); notify('Education updated');
+    } catch (e) { notifyError(e); }
   }
 
   return (
@@ -250,7 +270,50 @@ const EXTRACTION = {
   unsupported: { label: '⚠ unsupported', cls: 'archived' },
 };
 
-function DocumentsCard({ documents, reload, notify }) {
+function OrphanAnswersCard({ notify, notifyError }) {
+  const [answers, setAnswers] = useState([]);
+
+  function load() {
+    api.getOrphanedAnswers().then(setAnswers).catch(notifyError);
+  }
+  useEffect(load, []);
+
+  async function remove(id) {
+    try {
+      await api.deleteAnswer(id);
+      setAnswers((prev) => prev.filter((a) => a.id !== id));
+      notify('Answer removed');
+    } catch (e) { notifyError(e); }
+  }
+
+  if (answers.length === 0) return null;
+
+  return (
+    <div className="card">
+      <h3>Saved draft answers</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Answers you saved from job search before adding the job to your tracker.
+      </p>
+      {answers.map((a) => (
+        <div key={a.id} className="autofill-item">
+          <div>
+            <div className="autofill-label">
+              {a.job_title || 'Role'}{a.company ? ` · ${a.company}` : ''}
+            </div>
+            <div style={{ fontWeight: 500, marginTop: 4 }}>{a.question}</div>
+            <div className="autofill-value">{a.answer}</div>
+          </div>
+          <div className="row">
+            <button className="btn small ghost" onClick={() => navigator.clipboard.writeText(a.answer)}>Copy</button>
+            <button className="btn small danger" onClick={() => remove(a.id)}>Delete</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DocumentsCard({ documents, reload, notify, notifyError }) {
   const [file, setFile] = useState(null);
   const [type, setType] = useState('resume');
   const [preview, setPreview] = useState(null); // { id, text }
@@ -262,8 +325,8 @@ function DocumentsCard({ documents, reload, notify }) {
     fd.append('type', type);
     fd.append('is_default', documents.filter((d) => d.type === type).length === 0 ? '1' : '');
     try {
-      await api.uploadDocument(fd); setFile(null); reload(); notify('Uploaded & text extracted');
-    } catch (e) { notify(e.message); }
+      await api.uploadDocument(fd); setFile(null); reload(); notify('Uploaded — extracting text…');
+    } catch (e) { notifyError(e); }
   }
 
   async function togglePreview(id) {
@@ -271,12 +334,12 @@ function DocumentsCard({ documents, reload, notify }) {
     try {
       const r = await api.getDocumentText(id);
       setPreview({ id, text: r.text || '(no text extracted)' });
-    } catch (e) { notify(e.message); }
+    } catch (e) { notifyError(e); }
   }
 
   async function reextract(id) {
     try { await api.reextractDocument(id); reload(); notify('Re-extracted'); }
-    catch (e) { notify(e.message); }
+    catch (e) { notifyError(e); }
   }
 
   return (
@@ -334,15 +397,15 @@ function DocumentsCard({ documents, reload, notify }) {
           <option value="cover_letter">Cover letter</option>
           <option value="other">Other</option>
         </select>
-        <input type="file" accept=".pdf,.doc,.docx,.txt" onChange={(e) => setFile(e.target.files[0])} style={{ width: 'auto' }} />
+        <input type="file" accept=".pdf,.docx,.txt" onChange={(e) => setFile(e.target.files[0])} style={{ width: 'auto' }} />
         <button className="btn secondary" onClick={upload} disabled={!file}>Upload</button>
       </div>
-      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>PDF, DOCX or TXT extract text · DOC up to 10 MB.</p>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>PDF, DOCX, or TXT · up to 10 MB. Text extracts in the background.</p>
     </div>
   );
 }
 
-function CustomFieldsCard({ profile, setProfile, notify }) {
+function CustomFieldsCard({ profile, setProfile, notify, notifyError }) {
   const [fields, setFields] = useState(Object.entries(profile.custom_fields || {}));
   const [k, setK] = useState('');
   const [v, setV] = useState('');
@@ -350,8 +413,10 @@ function CustomFieldsCard({ profile, setProfile, notify }) {
   async function persist(next) {
     setFields(next);
     const obj = Object.fromEntries(next);
-    const saved = await api.updateProfile({ custom_fields: obj });
-    setProfile(saved); notify('Saved');
+    try {
+      const saved = await api.updateProfile({ custom_fields: obj });
+      setProfile(saved); notify('Saved');
+    } catch (e) { notifyError(e); }
   }
   function add() {
     if (!k.trim()) return;

@@ -36,7 +36,7 @@ beyond what is marked ✅.
 - **Quality gaps:** no lint/CI yet (server+client unit tests now exist); no auth
   (fine locally). *(Cross-cutting / Phase 5)*
 
-### Addressed in Phase 1.5 ✅
+### Addressed in Phase 1.5 (+ 1.5.7 hardening) ✅
 - **AI is now orchestrated:** all Claude usage flows through
   `services/ai/orchestrator.js` (no more two-endpoint bolt-on).
 - **Uploaded resumes are live context:** PDF/DOCX/TXT text is extracted on
@@ -45,6 +45,9 @@ beyond what is marked ✅.
 - **Q&A answers persist** (`application_answers`); experience/education are
   **editable** in the UI; client load errors are **surfaced** via toasts;
   schema is **migration-versioned**.
+- **1.5.7 hardening:** AI response cache, answer API-error templates, async
+  extraction + boot backfill, orphan Q&A on Profile, cover letter save from
+  Search, `.doc` rejected, mutation error toasts.
 
 ---
 

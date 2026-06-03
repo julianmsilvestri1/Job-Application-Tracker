@@ -1,4 +1,5 @@
 import ApplicationDocuments from './ApplicationDocuments.jsx';
+import ApplicationChecklist from './ApplicationChecklist.jsx';
 
 // The fixed-section layout for one application's workspace (Unit 2.0).
 // Sections are always present; later units fill their bodies:
@@ -64,13 +65,11 @@ export default function ApplicationDetailsPanel({
       </Section>
 
       <Section title="Checklist" count={app.tasks.length}>
-        {app.tasks.length === 0 ? (
-          <div className="empty">No checklist items yet.</div>
-        ) : (
-          <ul>{app.tasks.map((t) => (
-            <li key={t.id}>{t.done ? '✅' : '⬜'} {t.label}</li>
-          ))}</ul>
-        )}
+        <ApplicationChecklist
+          applicationId={app.id}
+          tasks={app.tasks}
+          onChanged={onReload}
+        />
       </Section>
 
       <Section title="Apply plan">

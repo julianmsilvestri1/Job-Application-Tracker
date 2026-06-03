@@ -58,6 +58,15 @@ export const api = {
   detachDocument: (applicationId, documentId) =>
     request(`/applications/${applicationId}/documents/${documentId}`, { method: 'DELETE' }),
 
+  // Checklist tasks (Phase 2.2)
+  getTasks: (applicationId) => request(`/applications/${applicationId}/tasks`),
+  addTask: (applicationId, b) =>
+    request(`/applications/${applicationId}/tasks`, { method: 'POST', body: JSON.stringify(b) }),
+  updateTask: (applicationId, taskId, b) =>
+    request(`/applications/${applicationId}/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify(b) }),
+  deleteTask: (applicationId, taskId) =>
+    request(`/applications/${applicationId}/tasks/${taskId}`, { method: 'DELETE' }),
+
   // Answers (Q&A)
   getAnswers: (applicationId) => request(`/applications/${applicationId}/answers`),
   saveAnswerForApp: (applicationId, b) =>

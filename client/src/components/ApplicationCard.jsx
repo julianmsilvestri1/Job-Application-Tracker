@@ -17,6 +17,9 @@ export default function ApplicationCard({ app, onOpen, onChangeStatus, onSaveNot
         {app.source && <span className="badge source">{app.source}</span>}
         {app.salary && <span className="muted">💰 {app.salary}</span>}
         {app.applied_at && <span className="muted">Applied {new Date(app.applied_at).toLocaleDateString()}</span>}
+        {app.taskProgress?.total > 0 && (
+          <span className="muted">✓ {app.taskProgress.done}/{app.taskProgress.total}</span>
+        )}
         {app.url && <a href={app.url} target="_blank" rel="noreferrer">Open posting ↗</a>}
       </div>
 

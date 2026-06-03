@@ -220,6 +220,28 @@ export const migrations = [
       CREATE INDEX IF NOT EXISTS idx_app_docs_document ON application_documents(document_id);
     `);
   },
+
+  // --- Migration 9: per-application apply checklist (Unit 2.2) --------------
+  // Makes every application actionable with seeded tasks, deadlines, and
+  // visible progress.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS application_tasks (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        application_id INTEGER NOT NULL,
+        label          TEXT NOT NULL,
+        done           INTEGER DEFAULT 0,
+        due_date       TEXT,
+        category       TEXT DEFAULT 'apply',      -- apply | document | form | follow_up | interview | networking | custom
+        source         TEXT DEFAULT 'template',   -- template | ai | manual | extension
+        sort_order     INTEGER DEFAULT 0,
+        created_at     TEXT DEFAULT (datetime('now')),
+        updated_at     TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_app_tasks_application ON application_tasks(application_id);
+    `);
+  },
 ];
 
 export function runMigrations(db) {

@@ -17,30 +17,19 @@ API key, no network at query time, the résumé never leaves the machine. Every
 unit **degrades gracefully**: if the model can't load, retrieval returns nothing
 and the orchestrator falls back to today's full-context behavior.
 
-**Packages:** **none by default.** The default embedder is dependency-free
-(feature hashing) — chosen after `@xenova/transformers` was found to pull a
-**critical `protobufjs` RCE** (via `onnxruntime-web`) and a native
-`onnxruntime-node` that our `omit=optional` policy skips. A neural provider
-(MiniLM via Transformers.js, `Xenova/all-MiniLM-L6-v2`) is an **opt-in upgrade**
-the user installs explicitly, documented with that security caveat. `sqlite-vec`
-remains an optional scale upgrade; the default path needs no native extension.
+**Packages:** `@huggingface/transformers` (a.k.a. Transformers.js; model
+`Xenova/all-MiniLM-L6-v2`, 384-d, ~25 MB, cached on first use). `sqlite-vec` is
+**optional** (see 3.5.0) — the default path needs no native extension.
 
-**Units:** 3.5.0 ✅ → 3.5.1 → 3.5.2 → 3.5.3 → 3.5.4
+**Units:** 3.5.0 → 3.5.1 → 3.5.2 → 3.5.3 → 3.5.4
 
 ---
 
-## Unit 3.5.0 — Embedding service + vector store ✅
+## Unit 3.5.0 — Embedding service + vector store
 - **Objective:** one in-process embedder + a place to keep vectors, with a
-  pure-JS similarity search that needs no native extension, no model download,
-  and **zero added vulnerabilities**.
+  pure-JS similarity search that needs no native extension.
 - **Depends on:** 1.5.0 (migrations).
-- **Built:** `services/ai/embeddings.js` — default **dependency-free** embedder
-  (signed feature hashing + sublinear TF, L2-normalized, 512-d); pure
-  `cosineSimilarity`/`topK`/`toBlob`/`fromBlob`; `setEmbedder()` to plug in a
-  neural provider or a test fake; `available()` always true (no model needed).
-  Migration 6 adds the `embeddings` table. 6 unit tests (norm, cosine ordering,
-  topK + weight, blob round-trip, DI swap) — no model, no network.
-- **Schema (migration 6, as built):**
+- **Schema (migration):**
   ```sql
   CREATE TABLE embeddings (
     id           integer primary key autoincrement,
@@ -83,7 +72,10 @@ remains an optional scale upgrade; the default path needs no native extension.
   - On save of experience / education / skill / custom field / `application_answer`,
     enqueue an embedding upsert (reuse the `setImmediate` queue pattern from
     document extraction). Résumé text is chunked into ~512-char windows
-    (`source_type='resume_chunk'`).
+    (`source_type='resume_chunk'`, `source_id = documents.id`).
+  - **Phase 2 bridge:** index **all** uploaded resumes (not only default) so
+    `application_documents.variant_tag` + attached `document_id` can scope
+    retrieval for `/extension/context` (see Phase 2 §0 and Unit 2.1).
   - `reindexAll()` + a boot `backfillEmbeddings()` (mirrors
     `backfillPendingExtractions`) so existing data and upgrades are covered.
   - Deletes cascade (remove embeddings when the source row is deleted).
@@ -167,22 +159,11 @@ remains an optional scale upgrade; the default path needs no native extension.
 
 ---
 
-## Phase exit criteria — ✅ COMPLETE
-- [x] Prompts use retrieved evidence (identity core + top-k chunks) instead of
-      the full profile, with a clean full-context fallback when embeddings are
-      unavailable (cover letters + answers).
-- [x] Profile/answers/résumé indexed via self-reconciling `syncEmbeddings`
-      (add new, prune stale) + backfilled on boot.
-- [x] Fit scoring blends a semantic (cosine-to-JD) signal; `semanticDuplicates`
-      helper available for the search layer.
-- [x] Edited answers are recorded (`answer_edits`), flagged, weighted higher,
-      and reinforce future retrieval.
-- [x] Everything works **key-free** and **offline** (dependency-free hashing
-      embedder; neural MiniLM is an opt-in upgrade); pure functions unit-tested
-      without any model. **74 server + 10 client tests, lint clean, 0 vulns.**
-
-> **Implementation note:** the spec's neural-default was rescoped to a
-> **dependency-free hashing embedder by default + opt-in neural**, because
-> `@xenova/transformers` pulls a critical `protobufjs` RCE and a native
-> `onnxruntime` our `omit=optional` policy skips. Same architecture, sound
-> foundation, clean upgrade path.
+## Phase exit criteria
+- [ ] Prompts use retrieved evidence (~600 tokens) instead of the full profile,
+      with a clean full-context fallback when embeddings are unavailable.
+- [ ] Profile/answers/résumé are indexed on save + backfilled on boot.
+- [ ] Fit scoring blends a semantic signal; near-dups optionally merge.
+- [ ] Edited answers are remembered and reinforce future generations.
+- [ ] Everything works **key-free** and **offline**; pure similarity functions
+      are unit-tested without downloading the model.

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import db from '../db.js';
+import { recordEditIfAny } from '../services/answerMemory.js';
 
 const router = Router();
 
@@ -104,6 +105,10 @@ router.post('/:id/answers', (req, res) => {
   `).run({
     application_id: id, job_title: app.title, company: app.company,
     question: b.question, answer: b.answer || '', source: b.source || 'manual',
+  });
+  recordEditIfAny(db, {
+    id: info.lastInsertRowid, question: b.question, jobContext: `${app.title || ''} ${app.company || ''}`.trim(),
+    aiDraft: b.ai_draft, finalText: b.answer, source: b.source || 'manual',
   });
   res.status(201).json(db.prepare('SELECT * FROM application_answers WHERE id = ?').get(info.lastInsertRowid));
 });

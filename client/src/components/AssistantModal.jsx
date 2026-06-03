@@ -9,6 +9,7 @@ export default function AssistantModal({ job, aiEnabled, onClose, onSaveCoverLet
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [answerSource, setAnswerSource] = useState('ai');
+  const [answerDraft, setAnswerDraft] = useState(''); // original AI text, to detect edits
   const [savedAnswers, setSavedAnswers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [warning, setWarning] = useState('');
@@ -38,6 +39,7 @@ export default function AssistantModal({ job, aiEnabled, onClose, onSaveCoverLet
     try {
       const r = await api.answerQuestion({ ...jobPayload, question, refresh });
       setAnswer(r.text || '');
+      setAnswerDraft(r.text || '');
       setAnswerSource(r.source || 'ai');
       if (r.warning) setWarning(r.warning);
     } catch (e) { setWarning(e.message); }
@@ -47,6 +49,8 @@ export default function AssistantModal({ job, aiEnabled, onClose, onSaveCoverLet
   async function saveAnswer() {
     if (!question.trim() || !answer.trim()) return;
     const body = { question, answer, source: answerSource };
+    // Send the original AI draft so the backend can record an edit (3.5.4).
+    if (answerSource === 'ai' && answerDraft && answerDraft !== answer) body.ai_draft = answerDraft;
     try {
       if (job.id) {
         await api.saveAnswerForApp(job.id, body);
@@ -54,7 +58,7 @@ export default function AssistantModal({ job, aiEnabled, onClose, onSaveCoverLet
       } else {
         await api.saveAnswer({ ...body, job_title: job.title, company: job.company });
       }
-      setQuestion(''); setAnswer('');
+      setQuestion(''); setAnswer(''); setAnswerDraft('');
     } catch (e) { setWarning(e.message); }
   }
 

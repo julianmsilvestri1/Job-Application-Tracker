@@ -182,6 +182,23 @@ export const migrations = [
       CREATE INDEX IF NOT EXISTS idx_embeddings_source ON embeddings(source_type, source_id);
     `);
   },
+
+  // --- Migration 7: answer memory / reinforcement (Unit 3.5.4) -------------
+  // Logs when the user edits an AI-drafted answer before saving, and flags the
+  // saved answer as edited so retrieval weights the user's own voice higher.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS answer_edits (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        question    TEXT DEFAULT '',
+        job_context TEXT DEFAULT '',
+        ai_draft    TEXT DEFAULT '',
+        final_text  TEXT NOT NULL,
+        created_at  TEXT DEFAULT (datetime('now'))
+      );
+    `);
+    addColumn(db, 'application_answers', 'edited', 'INTEGER DEFAULT 0');
+  },
 ];
 
 export function runMigrations(db) {

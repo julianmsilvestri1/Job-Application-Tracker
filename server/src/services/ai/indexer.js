@@ -46,8 +46,8 @@ export function desiredItems(db = defaultDb) {
   }
   for (const a of db.prepare('SELECT * FROM application_answers').all()) {
     if (!a.answer) continue;
-    // User-authored / edited answers are higher-signal for the candidate's voice.
-    const weight = a.source === 'manual' ? 1.5 : 1;
+    // User-authored or AI-edited answers are higher-signal for the candidate's voice.
+    const weight = (a.source === 'manual' || a.edited) ? 1.5 : 1;
     items.push({ source_type: 'answer', source_id: a.id, text: `Q: ${a.question}\nA: ${a.answer}`, weight });
   }
 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import db from '../db.js';
+import { recordEditIfAny } from '../services/answerMemory.js';
 
 // Flat answer routes. App-scoped list/create live under /api/applications/:id/answers;
 // these handle inline (search-context) answers and deletion.
@@ -26,6 +27,10 @@ router.post('/', (req, res) => {
     application_id: b.application_id || null,
     job_title: b.job_title || '', company: b.company || '',
     question: b.question, answer: b.answer || '', source: b.source || 'manual',
+  });
+  recordEditIfAny(db, {
+    id: info.lastInsertRowid, question: b.question, jobContext: `${b.job_title || ''} ${b.company || ''}`.trim(),
+    aiDraft: b.ai_draft, finalText: b.answer, source: b.source || 'manual',
   });
   res.status(201).json(db.prepare('SELECT * FROM application_answers WHERE id = ?').get(info.lastInsertRowid));
 });

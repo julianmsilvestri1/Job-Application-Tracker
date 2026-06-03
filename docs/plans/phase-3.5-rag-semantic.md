@@ -17,19 +17,30 @@ API key, no network at query time, the résumé never leaves the machine. Every
 unit **degrades gracefully**: if the model can't load, retrieval returns nothing
 and the orchestrator falls back to today's full-context behavior.
 
-**Packages:** `@huggingface/transformers` (a.k.a. Transformers.js; model
-`Xenova/all-MiniLM-L6-v2`, 384-d, ~25 MB, cached on first use). `sqlite-vec` is
-**optional** (see 3.5.0) — the default path needs no native extension.
+**Packages:** **none by default.** The default embedder is dependency-free
+(feature hashing) — chosen after `@xenova/transformers` was found to pull a
+**critical `protobufjs` RCE** (via `onnxruntime-web`) and a native
+`onnxruntime-node` that our `omit=optional` policy skips. A neural provider
+(MiniLM via Transformers.js, `Xenova/all-MiniLM-L6-v2`) is an **opt-in upgrade**
+the user installs explicitly, documented with that security caveat. `sqlite-vec`
+remains an optional scale upgrade; the default path needs no native extension.
 
-**Units:** 3.5.0 → 3.5.1 → 3.5.2 → 3.5.3 → 3.5.4
+**Units:** 3.5.0 ✅ → 3.5.1 → 3.5.2 → 3.5.3 → 3.5.4
 
 ---
 
-## Unit 3.5.0 — Embedding service + vector store
+## Unit 3.5.0 — Embedding service + vector store ✅
 - **Objective:** one in-process embedder + a place to keep vectors, with a
-  pure-JS similarity search that needs no native extension.
+  pure-JS similarity search that needs no native extension, no model download,
+  and **zero added vulnerabilities**.
 - **Depends on:** 1.5.0 (migrations).
-- **Schema (migration):**
+- **Built:** `services/ai/embeddings.js` — default **dependency-free** embedder
+  (signed feature hashing + sublinear TF, L2-normalized, 512-d); pure
+  `cosineSimilarity`/`topK`/`toBlob`/`fromBlob`; `setEmbedder()` to plug in a
+  neural provider or a test fake; `available()` always true (no model needed).
+  Migration 6 adds the `embeddings` table. 6 unit tests (norm, cosine ordering,
+  topK + weight, blob round-trip, DI swap) — no model, no network.
+- **Schema (migration 6, as built):**
   ```sql
   CREATE TABLE embeddings (
     id           integer primary key autoincrement,

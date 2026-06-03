@@ -159,6 +159,29 @@ export const migrations = [
       INSERT OR IGNORE INTO search_preferences (id) VALUES (1);
     `);
   },
+
+  // --- Migration 6: embeddings / vector store (Unit 3.5.0) -----------------
+  // Local semantic retrieval (RAG). Vectors are stored as Float32 blobs and
+  // searched with brute-force cosine in JS (ample at personal scale). The
+  // embedder is pluggable (dependency-free hashing by default; optional neural).
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS embeddings (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_type  TEXT NOT NULL,       -- experience|education|skill|answer|custom|resume_chunk
+        source_id    INTEGER,             -- row id in the source table (nullable for resume chunks)
+        content_hash TEXT NOT NULL,       -- sha256(text) — embed each unique string once
+        text_chunk   TEXT NOT NULL,
+        dim          INTEGER NOT NULL,
+        embedding    BLOB NOT NULL,       -- Float32Array bytes
+        weight       REAL DEFAULT 1.0,    -- retrieval boost (user-authored > AI draft)
+        provider     TEXT DEFAULT 'hash', -- which embedder produced this vector
+        updated_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(source_type, source_id, content_hash)
+      );
+      CREATE INDEX IF NOT EXISTS idx_embeddings_source ON embeddings(source_type, source_id);
+    `);
+  },
 ];
 
 export function runMigrations(db) {

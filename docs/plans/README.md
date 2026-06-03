@@ -17,7 +17,7 @@ implemented and shipped on its own.
 | [phase-correctness.md](./phase-correctness.md) | X-cut | Correctness, tests, CI |
 | [phase-3-discovery.md](./phase-3-discovery.md) | 3 | Fit scoring, recommended feed, positioning |
 | [phase-3.5-rag-semantic.md](./phase-3.5-rag-semantic.md) | 3.5 | **Local RAG** — embeddings, retrieval-augmented context, answer memory |
-| [phase-2-apply.md](./phase-2-apply.md) | 2 | Apply assistance: links, checklist, extension |
+| [phase-2-apply.md](./phase-2-apply.md) | 2 | **Next** — Apply workspace, packet API, production extension (units 2.0–2.8) |
 | [phase-4-tracker.md](./phase-4-tracker.md) | 4 | Tracker AI, document variants, analytics |
 | [phase-7-connected-portal.md](./phase-7-connected-portal.md) | 7 | **SSE live tracker + MCP server** |
 | [phase-5-scale.md](./phase-5-scale.md) | 5 | Auth & multi-device sync (optional) |
@@ -36,10 +36,7 @@ feeds the Phase 6 field resolver. See the
 [master plan](./master-plan-autonomous-apply.md) for the full sequencing, the
 technology pillars, and the unit specs.
 
-Phase 3 as-built detail: [`completed/phase-3-index.md`](./completed/phase-3-index.md).
-
-Expanded Phase 2/4/5 drafts from a superseded branch (reference only):
-[`supplements/`](./supplements/README.md).
+Phase 3 as-built detail: [`phase-3-index.md`](./phase-3-index.md).
 
 ---
 

@@ -6,6 +6,40 @@ const router = Router();
 
 const VALID_STATUS = ['saved', 'applied', 'interviewing', 'offer', 'rejected', 'archived'];
 
+// --- Apply-workspace serializer (Unit 2.0) --------------------------------
+// One normalized shape per application, with nested collections that later
+// units fill in. The nested reads are tolerant of not-yet-migrated tables, so
+// 2.1 (documents), 2.2 (tasks), 2.3 (apply plan), and 2.7 (events) light up
+// automatically as their migrations land — no change needed here.
+
+function tableExists(database, name) {
+  return Boolean(
+    database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name),
+  );
+}
+
+function childRows(database, table, applicationId, orderBy = 'id') {
+  if (!tableExists(database, table)) return [];
+  return database.prepare(`SELECT * FROM ${table} WHERE application_id = ? ORDER BY ${orderBy}`)
+    .all(applicationId);
+}
+
+export function serializeApplication(database, row) {
+  if (!row) return null;
+  const applyPlan = tableExists(database, 'apply_plans')
+    ? database.prepare('SELECT * FROM apply_plans WHERE application_id = ?').get(row.id) || null
+    : null;
+  return {
+    ...row,
+    remote: Boolean(row.remote),
+    documents: childRows(database, 'application_documents', row.id, 'attached_at DESC'),
+    tasks: childRows(database, 'application_tasks', row.id, 'sort_order, id'),
+    answers: childRows(database, 'application_answers', row.id, 'created_at DESC'),
+    events: childRows(database, 'application_events', row.id, 'created_at DESC'),
+    applyPlan,
+  };
+}
+
 // List, optionally filtered by status. GET /api/applications?status=applied
 router.get('/', (req, res) => {
   const { status } = req.query;
@@ -22,6 +56,14 @@ router.get('/stats', (req, res) => {
   rows.forEach((r) => { stats[r.status] = r.count; });
   stats.total = Object.values(stats).reduce((a, b) => a + b, 0);
   res.json(stats);
+});
+
+// Single application with nested workspace collections (Unit 2.0).
+// Registered after /stats so the literal route is not captured by :id.
+router.get('/:id', (req, res) => {
+  const row = db.prepare('SELECT * FROM applications WHERE id = ?').get(Number(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  res.json(serializeApplication(db, row));
 });
 
 // Save a job (from search) or create a manual entry.

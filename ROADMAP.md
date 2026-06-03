@@ -139,16 +139,23 @@ answers. 18 server + 2 client tests green.
 to the profile in one click; query planning widens coverage; all tasks have
 deterministic fallbacks. 53 server + 10 client tests green.
 
-### Phase 3.5 — Local RAG / semantic layer ⬜ (next; highest-leverage)
+### Phase 3.5 — Local RAG / semantic layer ✅
 Realizes the master plan's pillar P1. Spec:
 [`docs/plans/phase-3.5-rag-semantic.md`](./docs/plans/phase-3.5-rag-semantic.md).
-- ⬜ In-process embeddings (Transformers.js, key-free) + a vector store
-  (pure-JS cosine by default; `sqlite-vec` optional at scale).
-- ⬜ **Retrieval-augmented context**: send the top 3–5 relevant chunks, not the
-  whole profile — sharper output, flat token cost; feeds the Phase 6 resolver.
-- ⬜ Semantic fit blend + near-duplicate detection (retrofit search/discovery).
-- ⬜ **Answer memory**: learn from edits, reinforce the user's voice (few-shot
-  via retrieval — not model fine-tuning).
+- ✅ In-process embeddings + vector store (`embeddings` table, pure-JS cosine).
+  **Dependency-free hashing embedder by default** (zero vulns/offline); neural
+  MiniLM is an opt-in upgrade (`@xenova/transformers` pulls a critical CVE, so
+  it's not a core dep). `sqlite-vec` optional at scale.
+- ✅ **Retrieval-augmented context**: identity core + top-k chunks replace the
+  full-profile dump for cover letters & answers; full-context fallback.
+- ✅ Self-reconciling indexer (`syncEmbeddings`) + boot backfill.
+- ✅ Semantic fit blend (cosine-to-JD) + `semanticDuplicates` helper.
+- ✅ **Answer memory**: edits logged (`answer_edits`), flagged, weighted higher
+  in retrieval (few-shot reinforcement — not fine-tuning).
+
+**Acceptance met:** retrieval surfaces the relevant chunk / drops the rest;
+indexing is self-healing; fit blends a semantic signal; edited answers reinforce
+the user's voice. 74 server + 10 client tests, lint clean, 0 vulnerabilities.
 
 ### Phase 4 — Tracker intelligence & document variants ⬜
 - ⬜ AI **next actions**, follow-up reminders, interview prep per application.

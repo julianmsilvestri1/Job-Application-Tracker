@@ -25,7 +25,8 @@ critical path to first autonomous apply. Sequence after the apply engine
   - Emit points: `application.created`, `application.status_changed`,
     `job.saved`, and the apply-run lifecycle
     `agent.run_started | run_needs_input | run_completed | run_failed`
-    (these turn the tracker into a live monitor for batch apply sessions, 6.5).
+    (these turn the tracker into a live monitor for **Stagehand trigger-apply**
+    sessions from Phase 2.4 and batch apply sessions, 6.5).
 - **Frontend:** `useEventStream(onEvent)` hook wrapping `EventSource` with
   auto-reconnect + backoff; `Applications` (Kanban) and `Dashboard` subscribe on
   mount and patch state in place (move a card, bump a stat) instead of refetching.
@@ -59,8 +60,9 @@ critical path to first autonomous apply. Sequence after the apply engine
   | `update_status` | `PATCH /api/applications/:id` | "Mark Stripe as interviewing" |
 
   - **Safety:** read tools are unrestricted; write tools are explicit and echo
-    what changed. The MCP server **never** exposes apply/auto-submit — autonomy
-    stays behind the Phase 6 policy + approval gate, never reachable as a tool.
+    what changed. The MCP server **never** exposes apply/auto-submit — not
+    `trigger-apply`, not Stagehand/CDP control. Autonomy stays behind the
+    extension Trigger UI (Phase 2.4) + Phase 6 policy/approval gate.
 - **Frontend:** none. Ship a documented Claude Desktop / Cursor `mcpServers`
   config snippet in the `mcp-server/` README.
 - **Tests:** each tool invokes the correct route with validated input (mock

@@ -272,29 +272,65 @@ One unit ≈ one PR. Do not skip **2.0** — it prevents UI/API sprawl.
 
 ---
 
-### Unit 2.4 — Application packet API
+### Unit 2.4 — Stagehand autonomous apply service (CDP bridge) & application packet API
 
-> **Objective:** one canonical payload for portal copy UI **and** the extension.
+> **Objective:** deliver **fully autonomous, high-quality auto-submission** via a backend **Stagehand** service that connects to the user's active Chrome tab over the Chrome DevTools Protocol (CDP), while keeping the application **packet API** as the canonical data contract for the portal workspace.
 
-- **Depends on:** 2.1, 2.3.
-- **Backend:** `GET /api/applications/:id/packet`:
-  ```js
-  {
-    application,
-    candidate: { fields: [{ label, value, aliases, sensitivity }], profile, experiences, education, skills },
-    documents: [{ role, variantTag, label, filename, downloadUrl, extractionStatus, documentId }],
-    answers: [{ question, answer, source }],
-    applyPlan,
-    extensionPolicy: { canAutofill: true, canSubmit: false, redactedFields: [...] }
-  }
-  ```
-  - Refactor `/api/assistant/autofill` to use packet serializer for generic case.
+> **Architectural pivot (supersedes legacy assist-only constraint for execution):** Phase 2 now targets **L3-style auto-submit** on eligible employer/ATS pages. The browser extension **no longer scrapes or fills the DOM** — it is a lightweight **Trigger UI** only. All form intelligence and submission happen server-side through Stagehand.
+
+> **Preserved upstream work (do not regress):** Units **2.1**, **2.2**, and **2.3** remain as specified — document attachments (`application_documents` + `variant_tag`), per-application checklist (`application_tasks`), and AI apply plan (`apply_plans` + `orchestrator.applyPlan`). This unit **consumes** their outputs; it does not replace or invalidate them.
+
+> **`ats_field_mappings` table — retained and repurposed (Task 2):** the SQLite table created in Task 2 **stays in the schema**. It is **not** dropped or superseded by a new table. It becomes the backend Stagehand service's **internal semantic memory**: cached resolutions keyed by `(host, field_label, field_type, options_hash)` → `{ vault_key, answer, strategy, confidence, updated_at }`. Stagehand's `extract()` supplies live field semantics from the page; `ats_field_mappings` stores what the resolver learned so repeat fills on the same ATS host are faster, cheaper, and more consistent. This replaces brittle CSS-selector field maps — the cache is **semantic**, not DOM-selector-based.
+
+- **Depends on:** 2.1 (document attachments + `variant_tag`), 2.2 (checklist), 2.3 (apply plan + `likely_questions`).
+- **Packages:** `@browserbasehq/stagehand` in `server/` (backend-only). **Prerequisite on the user's machine:** Chrome launched with remote debugging, e.g. `google-chrome --remote-debugging-port=9222` (document in README / server `.env.example` as `CHROME_CDP_URL=http://localhost:9222`).
+- **Schema:** **no migration that drops or renames `ats_field_mappings`.** Optional additive columns on `ats_field_mappings` only if needed for confidence/strategy metadata; the Task 2 table is the source of truth for field-resolution cache.
+- **Backend — application packet (portal contract, unchanged purpose):**
+  - `GET /api/applications/:id/packet`:
+    ```js
+    {
+      application,
+      candidate: { fields: [{ label, value, aliases, sensitivity }], profile, experiences, education, skills },
+      documents: [{ role, variantTag, label, filename, downloadUrl, extractionStatus, documentId }],
+      answers: [{ question, answer, source }],
+      applyPlan,
+      tasks,                    // from 2.2
+      retrievalScope: { resumeDocumentIds: number[], variantTags: string[] },
+      applyPolicy: { canAutofill: true, canAutoSubmit: true, redactedFields: [...], requiresCdp: true }
+    }
+    ```
+  - Refactor `/api/assistant/autofill` to use the packet serializer for the generic case.
   - Sensitivity tags: `public` | `contact` | `sensitive`.
-- **Frontend:** Packet section — copy grouped fields, copy answers, download attachments, open posting URL, “Never auto-submits” notice.
-- **Tests:** packet includes attachments; sensitive tags; no raw resume blob unless requested.
-- **Packet `retrievalScope`:** `{ resumeDocumentIds: number[], variantTags: string[] }` derived from attachments — passed to `buildCandidateContext` / `/extension/context`.
-- **Acceptance:** one endpoint powers portal + extension; attached variant drives RAG scope.
-- **Commit:** `feat(apply): application packet API`
+  - **`retrievalScope`** derived from 2.1 attachments — passed to `buildCandidateContext` / orchestrator RAG during field resolution.
+- **Backend — Stagehand apply service (`services/apply/stagehandRunner.js`):**
+  - **`POST /api/extension/trigger-apply`** — body:
+    ```js
+    { applicationId: number, url: string }   // url = current tab location from extension Trigger UI
+    ```
+  - **Execution pipeline** (async job or awaited run, logged to `application_events` when 2.7 lands):
+    1. **Connect:** instantiate Stagehand with `cdpUrl: process.env.CHROME_CDP_URL || 'http://localhost:9222'` and attach to the tab whose URL matches `url`.
+    2. **Extract:** `stagehand.extract(...)` — read the live application form into normalized fields `{ label, type, options?, required, currentValue }` (handles dynamic React/Workday-class DOM without extension-side maps).
+    3. **Resolve:** for each extracted field, resolve the answer in order:
+       - **`ats_field_mappings`** cache lookup (host + semantic field key)
+       - **application packet** (profile, experiences, education, skills, attached documents, persisted Q&A from 2.1)
+       - **`orchestrator.js` RAG memory** — `buildCandidateContext({ query, useRetrieval: true, resumeDocumentIds })` scoped by packet `retrievalScope`
+       - **`applyPlan.likely_questions`** (2.3) for categorical/screening prompts (visa, license class, language proficiency — exact option match only)
+    4. **Learn:** upsert successful resolutions into **`ats_field_mappings`** (semantic memory grows per host).
+    5. **Fill:** `stagehand.act(...)` per field — set text, select valid `<option>` values, toggle checkboxes/radios.
+    6. **Submit:** `stagehand.act('click the submit application button')` (or host-specific submit instruction from cache) when policy allows.
+    7. **Audit:** record run summary `{ hostname, filledCount, skippedCount, submitted: boolean }` — **never** persist raw field values or SSN/EEO answers in logs.
+  - **CORS:** origin-locked to extension IDs (same pattern as 2.7); route is extension-triggered only.
+- **Extension (API contract in 2.4; thin Trigger UI shipped in 2.5+):**
+  - On a detected apply page: user selects saved application → clicks **Apply for me** → extension sends `POST /api/extension/trigger-apply` with `{ applicationId, url: location.href }`.
+  - **No** content-script DOM scraping, `fieldMaps/*`, `domFields.js`, or in-browser fill logic — those responsibilities move entirely to the backend Stagehand service (2.5–2.6 units refocus on Trigger UI + CDP setup docs, not DOM maps).
+- **Frontend:** Packet section — copy grouped fields, copy answers, download attachments, open posting URL; **Apply for me** CTA with Chrome CDP setup instructions; run status from Activity/events when available.
+- **Tests:** packet includes attachments + `retrievalScope`; sensitive tags; trigger-apply with **mocked Stagehand** (extract → resolve → act → submit sequence); `ats_field_mappings` cache hit on second resolve for same host/label; no raw resume blob in packet unless requested; resolver never fabricates factual/EEO fields without vault data.
+- **Acceptance:**
+  - Portal packet API works standalone (Units 2.1–2.3 data visible and copyable).
+  - With Chrome on `:9222` and a Greenhouse/Lever apply tab active, trigger-apply **extracts, fills, and submits** end-to-end.
+  - Second apply to the same host reuses **`ats_field_mappings`** without redundant LLM calls for known fields.
+  - Units 2.1, 2.2, 2.3 behaviour unchanged; attached resume variant scopes RAG correctly.
+- **Commit:** `feat(apply): Stagehand CDP auto-submit service, packet API, and trigger-apply route`
 
 ---
 
@@ -439,7 +475,7 @@ One unit ≈ one PR. Do not skip **2.0** — it prevents UI/API sprawl.
 - [ ] **2.1** Documents attach to applications; “what did I send?” is clear.
 - [ ] **2.2** Checklist with deadlines; progress on cards and dashboard.
 - [ ] **2.3** Apply plan works with and without `ANTHROPIC_API_KEY`.
-- [ ] **2.4** Packet API powers portal copy and extension.
+- [ ] **2.4** Packet API powers portal workspace; Stagehand CDP service + `POST /api/extension/trigger-apply` auto-submits on eligible ATS pages; **`ats_field_mappings`** semantic cache retained and populated.
 - [ ] **2.5–2.5b** Shared core builds **Chrome + Safari**; Safari Web Extension runs on **iPad** with LAN portal URL; connection test works.
 - [ ] **2.1** `variant_tag` scopes document attachment; multi-resume indexing supports RAG.
 - [ ] **2.3** Apply plan can append finance/networking tasks from template or AI.
@@ -453,11 +489,12 @@ One unit ≈ one PR. Do not skip **2.0** — it prevents UI/API sprawl.
 
 ## 7. Explicitly out of scope (Phase 6+)
 
-- Auto-submit or autonomy levels L3
-- Full field resolver (`resolveFields`) for arbitrary unseen fields
-- Playwright runner
+- Multi-page wizard orchestration beyond single-page submit (Phase 6.3 extends 2.4 Stagehand runner)
+- Full field resolver (`resolveFields`) for arbitrary unseen fields without cache warm-up (Phase 6.1)
+- Playwright headless runner without an open Chrome tab (Phase 6.7)
 - Full **AI-generated** resume variants per job (Phase 4.3) — Phase 2 links existing uploaded docs + `variant_tag`; user uploads separate files per narrative
-- Batch “apply to top N” queue
+- Batch “apply to top N” queue (Phase 6.5)
+- In-extension DOM scraping / per-ATS CSS field maps (superseded by Stagehand `extract()` in 2.4)
 
 ---
 

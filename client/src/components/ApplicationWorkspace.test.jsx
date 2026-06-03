@@ -16,6 +16,8 @@ vi.mock('../api.js', () => ({
     attachDocument: vi.fn(),
     detachDocument: vi.fn(),
     downloadUrl: (id) => `/api/documents/${id}/download`,
+    getPacket: vi.fn(),
+    triggerApply: vi.fn(),
   },
 }));
 
@@ -28,6 +30,10 @@ beforeEach(() => {
   });
   api.getAnswers.mockResolvedValue([]);
   api.getDocuments.mockResolvedValue([]);
+  api.getPacket.mockResolvedValue({
+    candidate: { fields: [] }, documents: [], answers: [],
+    applyPolicy: { redactedFields: [] }, retrievalScope: { resumeDocumentIds: [], variantTags: [] },
+  });
 });
 
 test('workspace renders the fixed sections for a loaded application', async () => {

@@ -261,6 +261,29 @@ export const migrations = [
       );
     `);
   },
+
+  // --- Migration 11: ATS field-resolution semantic cache (Unit 2.4) --------
+  // The Stagehand apply runner's memory: what the resolver learned for a given
+  // (host, field, type, options) so repeat fills on the same ATS host are
+  // faster/cheaper/consistent. Semantic — NOT brittle CSS-selector field maps.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS ats_field_mappings (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        host         TEXT NOT NULL,
+        field_label  TEXT NOT NULL,
+        field_type   TEXT DEFAULT 'text',
+        options_hash TEXT DEFAULT '',
+        vault_key    TEXT DEFAULT '',     -- which candidate field/source answered it
+        answer       TEXT DEFAULT '',
+        strategy     TEXT DEFAULT '',      -- cache | packet | answer | rag | plan
+        confidence   REAL DEFAULT 0,
+        updated_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE (host, field_label, field_type, options_hash)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ats_host ON ats_field_mappings(host);
+    `);
+  },
 ];
 
 export function runMigrations(db) {

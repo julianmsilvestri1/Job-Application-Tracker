@@ -72,6 +72,11 @@ export const api = {
   generateApplyPlan: (applicationId, b = {}) =>
     request(`/applications/${applicationId}/apply-plan`, { method: 'POST', body: JSON.stringify(b) }),
 
+  // Packet & auto-apply (Phase 2.4)
+  getPacket: (applicationId) => request(`/applications/${applicationId}/packet`),
+  triggerApply: (applicationId, url) =>
+    request('/extension/trigger-apply', { method: 'POST', body: JSON.stringify({ applicationId, url }) }),
+
   // Answers (Q&A)
   getAnswers: (applicationId) => request(`/applications/${applicationId}/answers`),
   saveAnswerForApp: (applicationId, b) =>

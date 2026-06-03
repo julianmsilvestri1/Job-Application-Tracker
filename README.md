@@ -110,7 +110,7 @@ toward autonomous, human-in-the-loop applying (Phase 6).
 | **1.5** | Intelligence foundation | ✅ | Resume extraction, AI orchestrator, persisted answers, migrations, profile editing |
 | **X** | Correctness & quality | ✅ | Tests, ESLint, CI, search de-dupe & query fixes |
 | **3** | Personalized discovery | ✅ | Fit scoring, recommended feed, preferences, positioning, query planning |
-| **3.5** | Local RAG / semantic layer | 🟡 | Embeddings + retrieval (see below) |
+| **3.5** | Local RAG / semantic layer | ✅ | Embeddings + retrieval-augmented context, semantic fit, answer memory |
 | **2** | Real apply assistance | ⬜ | Production extension, apply checklist, documents ↔ applications |
 | **4** | Tracker intelligence | ⬜ | Coaching, document variants, analytics, calendar/contacts |
 | **6** | Autonomous apply engine | ⬜ | Field resolver, apply plans, extension autopilot, approval gate, optional Playwright runner |
@@ -119,7 +119,7 @@ toward autonomous, human-in-the-loop applying (Phase 6).
 
 **Recommended build order:** `1.5` → `correctness` → `3` → **`3.5`** → `2` → `4` → `6` → `7` → `5 (opt)`.
 
-**Current focus:** finish the **discovery track** — **Phase 3** (shipped) plus **Phase 3.5** (RAG), then Phase 2 apply assistance.
+**Current focus:** discovery track **complete** — **Phase 3** + **Phase 3.5 (RAG)** shipped. Next: **Phase 2** apply assistance (production extension + per-ATS field maps).
 
 ---
 
@@ -193,19 +193,19 @@ All four units ship **with or without** `ANTHROPIC_API_KEY` (heuristic fallbacks
 
 ---
 
-### Phase 3.5 — Local RAG / semantic layer 🟡 *in progress*
+### Phase 3.5 — Local RAG / semantic layer ✅
 
 **Goal:** embed your profile, answers, and résumé locally; retrieve only the most relevant chunks for each AI task instead of sending the full profile every time.
 
-| Unit | Status | What’s done / missing |
-|------|--------|------------------------|
-| **3.5.0** Embedding service + vector store | 🟡 | `embeddings` table + `services/ai/embeddings.js` (hash-based embedder, pure-JS cosine); neural MiniLM opt-in still per spec |
-| **3.5.1** Index knowledge base on save + boot backfill | ⬜ | No `indexer.js` yet |
-| **3.5.2** Retrieval-augmented context in orchestrator | ⬜ | `buildCandidateContext` still uses full profile |
-| **3.5.3** Semantic fit blend + near-duplicate detection | ⬜ | Phase 3 fit still keyword/heuristic + AI |
-| **3.5.4** Answer memory from user edits | ⬜ | No `answer_edits` table yet |
+| Unit | Status | What’s done |
+|------|--------|-------------|
+| **3.5.0** Embedding service + vector store | ✅ | `embeddings` table + `services/ai/embeddings.js` — **dependency-free hashing embedder** (pure-JS cosine, zero vulns); neural MiniLM is an opt-in upgrade |
+| **3.5.1** Index knowledge base + boot backfill | ✅ | `services/ai/indexer.js` `syncEmbeddings` (self-reconciling: add new, prune stale) + boot backfill |
+| **3.5.2** Retrieval-augmented context | ✅ | `buildCandidateContext({ query, useRetrieval })` → identity core + top-k chunks; full-context fallback; used by cover letters & answers |
+| **3.5.3** Semantic fit blend + near-dup helper | ✅ | `blendSemantic` (cosine-to-JD) in `scoreJobs`; `semanticDuplicates` helper |
+| **3.5.4** Answer memory from user edits | ✅ | `answer_edits` table + `edited` flag; edited answers weighted higher in retrieval |
 
-**Exit criteria (phase not done until all pass):** see checklist in [`phase-3.5-rag-semantic.md`](./docs/plans/phase-3.5-rag-semantic.md).
+**Why dependency-free by default:** `@xenova/transformers` pulls a **critical `protobufjs` RCE** and a native `onnxruntime` our `omit=optional` policy skips, so it's an **opt-in** upgrade rather than a core dependency — keeping installs at **0 vulnerabilities**. 74 server + 10 client tests, lint clean. Full detail in [`phase-3.5-rag-semantic.md`](./docs/plans/phase-3.5-rag-semantic.md).
 
 ---
 

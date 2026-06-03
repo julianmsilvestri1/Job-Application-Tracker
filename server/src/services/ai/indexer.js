@@ -8,7 +8,7 @@
 // before retrieval.
 import crypto from 'node:crypto';
 import defaultDb from '../../db.js';
-import { embed, toBlob, EMBED_DIM, PROVIDER } from './embeddings.js';
+import { embed, toBlob, fromBlob, topK, available, EMBED_DIM, PROVIDER } from './embeddings.js';
 
 const RESUME_CHUNK = 512;
 
@@ -100,6 +100,21 @@ export function syncEmbeddings(db = defaultDb) {
     if (!desired.has(`${r.source_type}|${r.source_id}|${r.content_hash}`)) { del.run(r.id); pruned += 1; }
   }
   return { total: items.length, indexed, pruned };
+}
+
+/**
+ * Retrieve the top-k knowledge chunks most relevant to `query`.
+ * Reconciles first so results reflect current data. Returns [] when embeddings
+ * are unavailable or there's nothing indexed (callers fall back to full context).
+ */
+export function retrieve(db = defaultDb, query = '', k = 5) {
+  if (!available() || !query.trim()) return [];
+  syncEmbeddings(db);
+  const rows = db.prepare('SELECT source_type, source_id, text_chunk, embedding, weight FROM embeddings').all();
+  if (rows.length === 0) return [];
+  const q = embed(query);
+  const candidates = rows.map((r) => ({ ...r, embedding: fromBlob(r.embedding) }));
+  return topK(q, candidates, k).filter((r) => r.score > 0);
 }
 
 /** Boot-time reconciliation (mirrors backfillPendingExtractions). */

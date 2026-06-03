@@ -12,6 +12,7 @@ import {
   heuristicPositioning,
   heuristicQueries,
 } from './heuristics.js';
+import { retrieve } from './indexer.js';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
@@ -94,15 +95,45 @@ export function formatCandidateContext({ profile = {}, experiences = [], educati
   ].filter(Boolean).join('\n');
 }
 
+// Always-on identity facts (kept even in retrieval mode).
+function identityCore(profile = {}) {
+  const skills = (Array.isArray(profile.skills) ? profile.skills : []).join(', ');
+  return [
+    `Name: ${profile.full_name || '(unknown)'}`,
+    profile.headline && `Headline: ${profile.headline}`,
+    profile.years_experience && `Years of experience: ${profile.years_experience}`,
+    profile.location && `Location: ${profile.location}`,
+    skills && `Skills: ${skills}`,
+    profile.work_authorization && `Work authorization: ${profile.work_authorization}`,
+  ].filter(Boolean).join('\n');
+}
+
+function formatRetrievedContext(profile, hits) {
+  const evidence = hits.map((h) => `[${h.source_type}] ${h.text_chunk}`).join('\n');
+  return `${identityCore(profile)}\n\n=== MOST RELEVANT EVIDENCE ===\n${evidence}`;
+}
+
 // DB-bound context builder used by the task functions.
-export async function buildCandidateContext({ includeResume = true, db = defaultDb } = {}) {
+// When `useRetrieval` + `query` are given and embeddings exist, the bulky
+// experience/resume dump is replaced by the top-k retrieved chunks (RAG); the
+// full context is the fallback when retrieval yields nothing.
+export async function buildCandidateContext({
+  includeResume = true, db = defaultDb, query = '', useRetrieval = false, k = 5,
+} = {}) {
   const profile = loadProfile(db);
   const experiences = db.prepare('SELECT * FROM experiences ORDER BY sort_order, id DESC').all();
   const education = db.prepare('SELECT * FROM education ORDER BY sort_order, id DESC').all();
   const resumeText = includeResume ? defaultResumeText(db) : '';
+
+  let text = formatCandidateContext({ profile, experiences, education, resumeText });
+  let retrieved = false;
+  if (useRetrieval && query) {
+    const hits = retrieve(db, query, k);
+    if (hits.length) { text = formatRetrievedContext(profile, hits); retrieved = true; }
+  }
+
   return {
-    profile, experiences, education, resumeText,
-    text: formatCandidateContext({ profile, experiences, education, resumeText }),
+    profile, experiences, education, resumeText, text, retrieved,
     hasResume: Boolean(resumeText),
   };
 }
@@ -143,7 +174,8 @@ async function complete({ system, user, maxTokens = 800, jsonSchema = null }) {
 // --- Tasks -----------------------------------------------------------------
 
 export async function coverLetter({ job, db = defaultDb, refresh = false }) {
-  const ctx = await buildCandidateContext({ includeResume: true, db });
+  const query = `${job.title || ''} ${job.company || ''} ${(job.description || '').slice(0, 1500)}`;
+  const ctx = await buildCandidateContext({ includeResume: true, db, query, useRetrieval: true });
   if (!aiEnabled()) return { text: templateCoverLetter(ctx.profile, job), source: 'template' };
 
   const system =
@@ -173,7 +205,8 @@ export async function coverLetter({ job, db = defaultDb, refresh = false }) {
 }
 
 export async function answerQuestion({ job = {}, question, db = defaultDb, refresh = false }) {
-  const ctx = await buildCandidateContext({ includeResume: true, db });
+  const query = `${question} ${job.title || ''} ${job.company || ''}`;
+  const ctx = await buildCandidateContext({ includeResume: true, db, query, useRetrieval: true });
   if (!aiEnabled()) {
     return { text: templateAnswer(ctx.profile, job, question), source: 'template' };
   }

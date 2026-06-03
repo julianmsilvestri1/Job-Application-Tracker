@@ -13,6 +13,7 @@ import {
   heuristicQueries,
 } from './heuristics.js';
 import { retrieve } from './indexer.js';
+import { embed, cosineSimilarity, available as embeddingsAvailable } from './embeddings.js';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
@@ -284,6 +285,20 @@ function clampScore(n) {
   return Math.max(0, Math.min(100, v));
 }
 
+// Blend a semantic (cosine-to-JD) signal into a lexical heuristic result.
+// Weights lexical 65% / semantic 35%; clamps to 99 (AI reserves a perfect 100).
+export function blendSemantic(result, candidateVec, job = {}) {
+  if (!candidateVec) return result;
+  const jobVec = embed(`${job.title || ''} ${job.description || ''}`);
+  const sem = Math.max(0, cosineSimilarity(candidateVec, jobVec)); // 0..1
+  const score = Math.min(99, clampScore(0.65 * result.score + 0.35 * sem * 100));
+  const reasons = result.reasons.slice();
+  if (sem >= 0.35 && !reasons.some((r) => /overall match/i.test(r))) {
+    reasons.unshift('Strong overall match with your background');
+  }
+  return { ...result, score, reasons };
+}
+
 /**
  * Score how well each posting fits the candidate, with explainable reasons/gaps.
  * Cached per (job_key, profile_hash) in the job_scores table; only uncached jobs
@@ -298,6 +313,9 @@ export async function scoreJobs({ jobs = [], db = defaultDb, refresh = false, ba
   const ctx = await buildCandidateContext({ includeResume: true, db });
   const candidate = candidateKeywords(ctx);
   const phash = profileHash(ctx.text);
+  // Semantic signal: embed the candidate surface once, blend cosine-to-JD into
+  // the heuristic score so paraphrased matches rank above pure keyword overlap.
+  const candidateVec = embeddingsAvailable() ? embed(ctx.text) : null;
 
   const keyed = jobs.map((job) => ({ job, key: jobKey(job) }));
   const byKey = new Map();
@@ -339,7 +357,7 @@ export async function scoreJobs({ jobs = [], db = defaultDb, refresh = false, ba
   }
 
   const heuristicFor = ({ job, key }) => {
-    const r = heuristicScore(candidate, job);
+    const r = blendSemantic(heuristicScore(candidate, job), candidateVec, job);
     persist(key, r, 'heuristic');
     byKey.set(key, { job_key: key, ...r, source: 'heuristic' });
   };

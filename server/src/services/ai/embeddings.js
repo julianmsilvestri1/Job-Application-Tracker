@@ -88,6 +88,19 @@ export function topK(queryVec, rows, k = 5) {
     .slice(0, k);
 }
 
+// Indices of near-duplicate vectors (cosine ≥ threshold to an earlier item).
+// Pure helper the search layer can opt into to merge reworded repostings.
+export function semanticDuplicates(vectors, threshold = 0.92) {
+  const drop = new Set();
+  for (let i = 0; i < vectors.length; i++) {
+    if (drop.has(i)) continue;
+    for (let j = i + 1; j < vectors.length; j++) {
+      if (!drop.has(j) && cosineSimilarity(vectors[i], vectors[j]) >= threshold) drop.add(j);
+    }
+  }
+  return drop;
+}
+
 // --- Blob (de)serialization for SQLite storage ----------------------------
 export function toBlob(vec) {
   return Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength);

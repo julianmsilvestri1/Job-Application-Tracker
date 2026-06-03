@@ -199,6 +199,24 @@ export const migrations = [
     `);
     addColumn(db, 'application_answers', 'edited', 'INTEGER DEFAULT 0');
   },
+
+  // --- Migration 8: ATS field-map cache (extension autofill) ---------------
+  // Persistent (domain, selector) → profile key mappings so the extension can
+  // resolve known form fields without RAG/LLM on repeat visits.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS ats_field_mappings (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        domain              TEXT NOT NULL,
+        field_selector      TEXT NOT NULL,
+        field_label         TEXT,
+        mapped_profile_key  TEXT NOT NULL,
+        normalized_intent   TEXT
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ats_mappings_domain_selector
+        ON ats_field_mappings(domain, field_selector);
+    `);
+  },
 ];
 
 export function runMigrations(db) {

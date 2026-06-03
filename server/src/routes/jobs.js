@@ -132,8 +132,11 @@ router.get('/recommended', async (req, res) => {
   }
 });
 
+// Flush the in-memory recommended-jobs cache. Called on preference mutations
+// (queries change) and profile/document mutations (embedded fit scores change).
+// Safe to call anytime — a no-op on an empty or already-cleared store, never throws.
 export function clearRecommendedCache() {
-  recommendedCache.clear();
+  recommendedCache?.clear?.();
 }
 
 export default router;

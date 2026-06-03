@@ -44,8 +44,11 @@ function setCached(key, value) {
   responseCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
 }
 
+// Flush the in-memory AI response cache. Called on profile/experience/document
+// mutations so the next AI call rebuilds from fresh candidate context. Safe to
+// call anytime — a no-op on an empty or already-cleared store, never throws.
 export function clearAiCache() {
-  responseCache.clear();
+  responseCache?.clear?.();
 }
 
 export function aiEnabled() {

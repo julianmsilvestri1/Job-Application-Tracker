@@ -6,6 +6,17 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import db from '../db.js';
 import { queueExtraction, runExtractionForDoc } from '../services/documents/extractionQueue.js';
+import { clearAiCache } from '../services/ai/orchestrator.js';
+import { clearRecommendedCache } from './jobs.js';
+
+// Uploading, re-extracting, re-defaulting, or deleting a document changes the
+// default resume text feeding the candidate context (and therefore the AI text
+// output and the fit scores in the recommended feed). Flush both in-memory
+// caches on any such mutation.
+function invalidateCandidateCaches() {
+  clearAiCache();
+  clearRecommendedCache();
+}
 
 // Columns returned in lists — excludes the (potentially large) extracted_text.
 const LIST_COLS =
@@ -69,6 +80,11 @@ router.post('/', upload.single('file'), async (req, res) => {
 
   const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(info.lastInsertRowid);
   queueExtraction(doc);
+  // A new default resume immediately changes the candidate context (the prior
+  // default is no longer is_default); flush now. Extraction completes
+  // asynchronously, so the freshly-extracted text lands on a later request —
+  // see the note in services/documents/extractionQueue.js.
+  invalidateCandidateCaches();
   res.status(201).json(db.prepare(`SELECT ${LIST_COLS} FROM documents WHERE id = ?`).get(doc.id));
 });
 
@@ -90,6 +106,7 @@ router.post('/:id/reextract', async (req, res, next) => {
     next(err);
     return;
   }
+  invalidateCandidateCaches();
   res.json(db.prepare(`SELECT ${LIST_COLS} FROM documents WHERE id = ?`).get(doc.id));
 });
 
@@ -114,6 +131,7 @@ router.put('/:id/default', (req, res) => {
   ) {
     queueExtraction(updated);
   }
+  invalidateCandidateCaches();
   res.json(db.prepare(`SELECT ${LIST_COLS} FROM documents WHERE id = ?`).get(doc.id));
 });
 
@@ -123,6 +141,7 @@ router.delete('/:id', (req, res) => {
     const filePath = path.join(uploadsDir, doc.stored_name);
     fs.rm(filePath, { force: true }, () => {});
     db.prepare('DELETE FROM documents WHERE id = ?').run(doc.id);
+    invalidateCandidateCaches();
   }
   res.status(204).end();
 });

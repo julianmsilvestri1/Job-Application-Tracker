@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import db from '../db.js';
+import { clearRecommendedCache } from './jobs.js';
 
 const router = Router();
 
@@ -56,6 +57,10 @@ router.put('/', (req, res) => {
     const set = Object.keys(updates).map((k) => `${k} = @${k}`).join(', ');
     db.prepare(`UPDATE search_preferences SET ${set}, updated_at = datetime('now') WHERE id = 1`).run(updates);
   }
+  // Saved preferences drive the recommended-jobs queries — flush that feed so
+  // the next /recommended request rebuilds against the new preferences. (The AI
+  // text cache is unaffected: preferences don't enter the candidate context.)
+  clearRecommendedCache();
   res.json(getPreferences());
 });
 

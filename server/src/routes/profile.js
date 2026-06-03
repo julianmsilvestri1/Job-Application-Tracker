@@ -1,7 +1,19 @@
 import { Router } from 'express';
 import db from '../db.js';
+import { clearAiCache } from '../services/ai/orchestrator.js';
+import { clearRecommendedCache } from './jobs.js';
 
 const router = Router();
+
+// Profile, experience, and education edits all change the candidate context the
+// AI builds from (see buildCandidateContext) and the fit scores embedded in the
+// recommended-jobs feed, so flush both in-memory caches on any such mutation.
+// (job_scores rows are keyed by a profile-context hash and self-invalidate on
+// the next scoreJobs call, so no DB cleanup is needed here.)
+function invalidateCandidateCaches() {
+  clearAiCache();
+  clearRecommendedCache();
+}
 
 const PROFILE_FIELDS = [
   'full_name', 'email', 'phone', 'location', 'headline', 'summary',
@@ -38,6 +50,7 @@ router.put('/', (req, res) => {
   if (Object.keys(updates).length) {
     const set = Object.keys(updates).map((k) => `${k} = @${k}`).join(', ');
     db.prepare(`UPDATE profile SET ${set}, updated_at = datetime('now') WHERE id = 1`).run(updates);
+    invalidateCandidateCaches();
   }
   res.json(getProfile());
 });
@@ -54,6 +67,7 @@ router.post('/experiences', (req, res) => {
     is_current: b.is_current ? 1 : 0, description: b.description || '',
     sort_order: b.sort_order || 0,
   });
+  invalidateCandidateCaches();
   res.status(201).json(db.prepare('SELECT * FROM experiences WHERE id = ?').get(info.lastInsertRowid));
 });
 
@@ -70,11 +84,13 @@ router.put('/experiences/:id', (req, res) => {
     is_current: b.is_current ? 1 : 0, description: b.description || '',
     sort_order: b.sort_order || 0,
   });
+  invalidateCandidateCaches();
   res.json(db.prepare('SELECT * FROM experiences WHERE id = ?').get(Number(req.params.id)));
 });
 
 router.delete('/experiences/:id', (req, res) => {
   db.prepare('DELETE FROM experiences WHERE id = ?').run(Number(req.params.id));
+  invalidateCandidateCaches();
   res.status(204).end();
 });
 
@@ -89,6 +105,7 @@ router.post('/education', (req, res) => {
     start_date: b.start_date || '', end_date: b.end_date || '',
     gpa: b.gpa || '', sort_order: b.sort_order || 0,
   });
+  invalidateCandidateCaches();
   res.status(201).json(db.prepare('SELECT * FROM education WHERE id = ?').get(info.lastInsertRowid));
 });
 
@@ -103,11 +120,13 @@ router.put('/education/:id', (req, res) => {
     start_date: b.start_date || '', end_date: b.end_date || '',
     gpa: b.gpa || '', sort_order: b.sort_order || 0,
   });
+  invalidateCandidateCaches();
   res.json(db.prepare('SELECT * FROM education WHERE id = ?').get(Number(req.params.id)));
 });
 
 router.delete('/education/:id', (req, res) => {
   db.prepare('DELETE FROM education WHERE id = ?').run(Number(req.params.id));
+  invalidateCandidateCaches();
   res.status(204).end();
 });
 

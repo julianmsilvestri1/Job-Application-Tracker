@@ -126,15 +126,27 @@ export async function buildCandidateContext({
   const education = db.prepare('SELECT * FROM education ORDER BY sort_order, id DESC').all();
   const resumeText = includeResume ? defaultResumeText(db) : '';
 
-  let text = formatCandidateContext({ profile, experiences, education, resumeText });
+  // `fullText` is the complete, query-INDEPENDENT candidate context (profile +
+  // work history + resume). It is the stable block we mark for prompt caching,
+  // so it stays byte-identical across every field query on a form. `text` and
+  // `evidence` layer the optional retrieval (RAG) view on top — that view is
+  // query-specific, so it must travel in the volatile part of the prompt, never
+  // in the cached prefix.
+  const fullText = formatCandidateContext({ profile, experiences, education, resumeText });
+  let text = fullText;
+  let evidence = '';
   let retrieved = false;
   if (useRetrieval && query) {
     const hits = retrieve(db, query, k);
-    if (hits.length) { text = formatRetrievedContext(profile, hits); retrieved = true; }
+    if (hits.length) {
+      evidence = hits.map((h) => `[${h.source_type}] ${h.text_chunk}`).join('\n');
+      text = formatRetrievedContext(profile, hits);
+      retrieved = true;
+    }
   }
 
   return {
-    profile, experiences, education, resumeText, text, retrieved,
+    profile, experiences, education, resumeText, text, fullText, evidence, retrieved,
     hasResume: Boolean(resumeText),
   };
 }
@@ -142,11 +154,28 @@ export async function buildCandidateContext({
 // --- Low-level Claude call -------------------------------------------------
 
 // Returns text, or (when jsonSchema is given) the parsed tool input object.
-async function complete({ system, user, maxTokens = 800, jsonSchema = null }) {
+//
+// Prompt caching: when `cacheContext` is supplied, `system` is structured as
+// two blocks — the task instructions, then the large static candidate context —
+// with an ephemeral `cache_control` breakpoint on the trailing context block.
+// Anthropic caches the entire rendered prefix up to that breakpoint (render
+// order is tools → system → messages), so the schema + instructions + candidate
+// context are written to cache once and read back at ~0.1x on every subsequent
+// field query that shares them. The volatile per-field input stays in the user
+// turn, AFTER the breakpoint, so it never perturbs the cached prefix. With no
+// `cacheContext`, `system` is sent as a plain string exactly as before.
+async function complete({ system, user, cacheContext = null, maxTokens = 800, jsonSchema = null }) {
+  const systemField =
+    cacheContext == null
+      ? system
+      : [
+          { type: 'text', text: system },
+          { type: 'text', text: cacheContext, cache_control: { type: 'ephemeral' } },
+        ];
   const body = {
     model: MODEL,
     max_tokens: maxTokens,
-    system,
+    system: systemField,
     messages: [{ role: 'user', content: user }],
   };
   if (jsonSchema) {
@@ -183,9 +212,12 @@ export async function coverLetter({ job, db = defaultDb, refresh = false }) {
     'You are an expert career writer. Write a concise, specific, professional ' +
     'cover letter in the first person (~250 words). No clichés or placeholders. ' +
     'Use only facts present in the candidate context (including their resume).';
+  // Cached, stable prefix: the full candidate context (see complete()).
+  const cacheContext = `=== CANDIDATE ===\n${ctx.fullText}`;
+  // Volatile tail: the specific job, plus any query-specific retrieved evidence.
   const user =
     `Write a tailored cover letter for this candidate and role.\n\n` +
-    `=== CANDIDATE ===\n${ctx.text}\n\n` +
+    (ctx.retrieved ? `=== MOST RELEVANT EXPERIENCE ===\n${ctx.evidence}\n\n` : '') +
     `=== JOB ===\nTitle: ${job.title}\nCompany: ${job.company}\n` +
     `Location: ${job.location || 'n/a'}\nDescription: ${(job.description || '').slice(0, 2500)}`;
 
@@ -197,7 +229,7 @@ export async function coverLetter({ job, db = defaultDb, refresh = false }) {
   }
 
   try {
-    const result = { text: await complete({ system, user, maxTokens: 900 }), source: 'ai' };
+    const result = { text: await complete({ system, user, cacheContext, maxTokens: 900 }), source: 'ai' };
     setCached(key, result);
     return result;
   } catch (err) {
@@ -215,10 +247,17 @@ export async function answerQuestion({ job = {}, question, db = defaultDb, refre
     'You help a job candidate answer application questions truthfully and ' +
     'concisely in the first person, using only facts in the candidate context. ' +
     'If a fact is unknown, give a sensible professional answer without inventing specifics.';
+  // Cached, stable prefix: the full candidate context + work authorization.
+  // This is identical for every field on a form, so after the first query it is
+  // read from cache instead of reprocessed (see complete()).
+  const cacheContext =
+    `=== CANDIDATE ===\n${ctx.fullText}` +
+    (ctx.profile.work_authorization ? `\nWork authorization: ${ctx.profile.work_authorization}` : '');
+  // Volatile per-field tail: the job, the specific question, and any retrieved
+  // evidence — everything that changes from one ATS field/selector to the next.
   const user =
-    `=== CANDIDATE ===\n${ctx.text}\n` +
-    (ctx.profile.work_authorization ? `Work authorization: ${ctx.profile.work_authorization}\n` : '') +
-    `\n=== JOB ===\n${job.title || ''} at ${job.company || ''}\n\n` +
+    (ctx.retrieved ? `=== MOST RELEVANT EVIDENCE ===\n${ctx.evidence}\n\n` : '') +
+    `=== JOB ===\n${job.title || ''} at ${job.company || ''}\n\n` +
     `=== QUESTION ===\n${question}\n\nWrite the answer only.`;
   const key = cacheKey('answerQuestion', [ctx.text, question, job.title, job.company]);
   if (!refresh) {
@@ -227,7 +266,7 @@ export async function answerQuestion({ job = {}, question, db = defaultDb, refre
   }
 
   try {
-    const result = { text: await complete({ system, user, maxTokens: 500 }), source: 'ai' };
+    const result = { text: await complete({ system, user, cacheContext, maxTokens: 500 }), source: 'ai' };
     setCached(key, result);
     return result;
   } catch (err) {
@@ -375,6 +414,9 @@ export async function scoreJobs({ jobs = [], db = defaultDb, refresh = false, ba
     'job. "reasons" must cite concrete candidate strengths that match; "gaps" must ' +
     'cite concrete requirements the candidate appears to be missing. Be calibrated ' +
     'and consistent: a strong match is 80+, a stretch is 40–60, a poor fit is <30.';
+  // The candidate context is identical across every batch — cache it once and
+  // let each batch reuse the cached prefix (tool schema + system + context).
+  const cacheContext = `=== CANDIDATE ===\n${ctx.fullText}`;
 
   for (const batch of chunk(toScore, batchSize)) {
     const jobsBlock = batch.map(({ job, key }) =>
@@ -382,12 +424,12 @@ export async function scoreJobs({ jobs = [], db = defaultDb, refresh = false, ba
       `Location: ${job.location || 'n/a'}\nDescription: ${(job.description || '').slice(0, 1200)}`,
     ).join('\n\n');
     const user =
-      `=== CANDIDATE ===\n${ctx.text}\n\n=== JOBS (${batch.length}) ===\n${jobsBlock}\n\n` +
+      `=== JOBS (${batch.length}) ===\n${jobsBlock}\n\n` +
       'Return one result per job_key, echoing the job_key exactly.';
 
     let parsed = null;
     try {
-      parsed = await complete({ system, user, maxTokens: 1500, jsonSchema: SCORE_SCHEMA });
+      parsed = await complete({ system, user, cacheContext, maxTokens: 1500, jsonSchema: SCORE_SCHEMA });
     } catch { parsed = null; }
 
     const results = new Map((parsed?.results || []).map((r) => [String(r.job_key), r]));
@@ -442,10 +484,11 @@ export async function positioning({ db = defaultDb, refresh = false } = {}) {
     'keywordStrategy lists ATS keywords worth featuring. summaryRewrite is a ' +
     'tight 2–3 sentence professional summary in the first person. Use only facts ' +
     'present in the context.';
-  const user = `=== CANDIDATE ===\n${ctx.text}\n\nProvide positioning suggestions.`;
+  const cacheContext = `=== CANDIDATE ===\n${ctx.fullText}`;
+  const user = 'Provide positioning suggestions.';
 
   try {
-    const out = await complete({ system, user, maxTokens: 800, jsonSchema: POSITIONING_SCHEMA });
+    const out = await complete({ system, user, cacheContext, maxTokens: 800, jsonSchema: POSITIONING_SCHEMA });
     if (!out || !Array.isArray(out.headlines) || out.headlines.length === 0) return fallback();
     const result = {
       headlines: out.headlines.filter(Boolean).slice(0, 6),
@@ -498,12 +541,13 @@ export async function planQueries({ intent = '', db = defaultDb, refresh = false
     'boards. Each query is a short keyword phrase (no boolean operators). Vary ' +
     'seniority and synonyms to widen coverage while staying relevant to the ' +
     'candidate. Set location/remote only when clearly implied.';
+  const cacheContext = `=== CANDIDATE ===\n${ctx.fullText}`;
   const user =
-    `=== CANDIDATE ===\n${ctx.text}\n\n=== INTENT ===\n${intent || '(none given — infer from the profile)'}\n\n` +
+    `=== INTENT ===\n${intent || '(none given — infer from the profile)'}\n\n` +
     'Return the queries and a one-line rationale.';
 
   try {
-    const out = await complete({ system, user, maxTokens: 600, jsonSchema: QUERIES_SCHEMA });
+    const out = await complete({ system, user, cacheContext, maxTokens: 600, jsonSchema: QUERIES_SCHEMA });
     const queries = (out?.queries || [])
       .map((q) => ({
         query: String(q.query || '').trim(),

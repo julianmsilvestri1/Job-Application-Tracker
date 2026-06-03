@@ -116,14 +116,23 @@ persists and survives reload; no-AI-key path yields useful cover letters and
 answers. 18 server + 2 client tests green.
 
 ### Phase 2 — Real apply assistance ⬜
-- ⬜ Production extension: remove ESM `export` from content script (bundle or
-  inline), configurable portal URL (not hardcoded `localhost:4000`),
-  per-ATS field maps (Greenhouse, Lever, Workday, Ashby), committed
-  Safari/Xcode project via `safari-web-extension-converter`.
-- ⬜ Per-application **apply checklist** (steps, deadline, required attachments).
-- ⬜ Link documents ↔ applications (which resume/cover letter was sent).
+- ⬜ Apply workspace (2.0–2.3): per-application checklist, document attachments
+  with `variant_tag`, AI apply plan — **Units 2.1–2.3 preserved as-is**.
+- ⬜ **Unit 2.4 — Stagehand autonomous apply:** backend `@browserbasehq/stagehand`
+  service connects to the user's Chrome tab via CDP (`http://localhost:9222`);
+  `extract()` reads the form, resolves answers via **`ats_field_mappings`**
+  semantic cache + orchestrator RAG + packet data, `act()` fills fields, then
+  submits. Extension becomes a **Trigger UI** (`POST /api/extension/trigger-apply`
+  with `{ applicationId, url }`) — no DOM scraping in the extension.
+- ⬜ Application **packet API** (`GET /api/applications/:id/packet`) powers the
+  portal workspace and feeds the Stagehand resolver.
+- ⬜ Browser extension (2.5+): dual Chrome + Safari builds; Trigger UI + CDP setup
+  docs (legacy per-ATS DOM field maps deferred to optional fallback).
 
-**Constraint:** stays human-in-the-loop; no auto-submit on Indeed/LinkedIn/ATS.
+**Constraint (updated):** fully autonomous auto-submit on eligible employer/ATS
+pages via Stagehand + CDP. LinkedIn/Indeed and other ToS-restricted hosts remain
+denylisted (policy in 2.8 / Phase 6.4). The Task 2 **`ats_field_mappings`**
+table is **retained** and repurposed as backend semantic field memory.
 
 ### Phase 3 — Personalized discovery ✅
 - ✅ AI **job-fit score** per posting (explainable: why it matches / gaps),
@@ -166,16 +175,25 @@ the user's voice. 74 server + 10 client tests, lint clean, 0 vulnerabilities.
 ### Phase 6 — Autonomous Apply Engine ⬜ (the "apply for me")
 The north star. Full spec + technology pillars in the
 [master plan](./docs/plans/master-plan-autonomous-apply.md).
-- ⬜ Answer vault → field resolver (never fabricates) → apply plan → extension
-  autopilot (incl. `/extension/context`) → autonomy levels + approval gate +
-  hash-chained audit → batch apply queue → **6.7 optional Playwright runner**
-  (eligible hosts; LinkedIn/Indeed auto-submit stays denylisted).
+- ⬜ **Execution substrate now lives in Phase 2.4:** Stagehand + CDP auto-submit,
+  `POST /api/extension/trigger-apply`, and **`ats_field_mappings`** semantic cache
+  (Task 2 table retained). Phase 6 builds **on top** — it does not re-implement
+  in-extension DOM fill.
+- ⬜ Answer vault (6.0) → field resolver (6.1, never fabricates) → application
+  plan & apply runs (6.2, event-sourced audit) → **extend 2.4 Stagehand runner**
+  with multi-page flows, file uploads, and progressive fill (6.3) → autonomy
+  levels + approval gate + hash-chained audit (6.4) → batch apply queue (6.5) →
+  **6.7 optional Playwright runner** for headless hosts without an open tab.
+- ⬜ LinkedIn/Indeed auto-submit stays denylisted regardless of autonomy level.
 
 ### Phase 7 — Connected portal ⬜
 Spec: [`docs/plans/phase-7-connected-portal.md`](./docs/plans/phase-7-connected-portal.md).
-- ⬜ **SSE** live tracker (real-time Kanban + agent-run monitor).
+- ⬜ **SSE** live tracker (real-time Kanban + **Stagehand apply-run monitor**
+  — streams `trigger-apply` / submit lifecycle events from Phase 2.4+).
 - ⬜ Custom **MCP server** (search/profile/pipeline/draft/save/status from
-  Claude Desktop/Cursor; never auto-submit).
+  Claude Desktop/Cursor; **no** `trigger-apply` or auto-submit — autonomy stays
+  behind the extension Trigger UI + Phase 6 policy gate, not reachable as an MCP
+  tool).
 
 ### Phase 5 — Scale (optional) ⬜
 - ⬜ Auth + multi-device sync if single-machine SQLite is outgrown.
@@ -205,8 +223,10 @@ Spec: [`docs/plans/phase-7-connected-portal.md`](./docs/plans/phase-7-connected-
 6. **Extension is a scaffold**, not shippable (ESM `export` in content script,
    hardcoded URL, no per-site maps, no Xcode project). Validate in Safari/Chrome
    before relying on it.
-7. **Compliance.** The "method of applying" must stay human-in-the-loop for
-   Indeed/LinkedIn/major ATS unless you accept legal/ToS risk.
+7. **Compliance.** Auto-submit via Stagehand (Phase 2.4) is scoped to eligible
+   employer/ATS pages with user-initiated trigger + CDP consent. LinkedIn/Indeed
+   and denylisted hosts remain blocked; CAPTCHA/login walls always hand back to
+   the user.
 
 ---
 

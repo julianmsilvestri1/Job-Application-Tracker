@@ -1,7 +1,7 @@
 # Phase 2 — Real Apply Assistance (bulletproof plan)
 
 **Status:** ⬜ planned · **next after** Phase 3 / 3.5 discovery track  
-**Goal:** turn applying from “open a tab and copy-paste” into a **guided, trustworthy application workspace** plus a **production browser extension** that fills real ATS forms — with you always reviewing and clicking Submit.
+**Goal:** turn applying from “open a tab and copy-paste” into a **guided, trustworthy application workspace** plus **production browser extensions (Safari + Chrome)** that fill real ATS forms — **Safari on iPad is a first-class target** because mobile Chrome does not support extensions — with you always reviewing and clicking Submit.
 
 **Hard constraint (non-negotiable):** never auto-submit on Indeed, LinkedIn, or major ATS sites. The portal and extension may **prepare, prefill, copy, validate, and track**; the human submits.
 
@@ -39,6 +39,44 @@ See [shared conventions](./README.md) (work-unit template, migrations, orchestra
 
 ---
 
+## 2a. Browser & device strategy (Safari + Chrome, **iPad-first**)
+
+Phase 2 ships **one shared extension core** with **two browser targets**. They are equally specified in exit criteria — not “Chrome first, Safari later.”
+
+| Target | Role | Why |
+|--------|------|-----|
+| **Safari on iPadOS** | **Primary mobile** apply device | iOS/iPadOS allows Web Extensions in Safari; **Chrome on iOS does not support extensions** (Apple WebKit-only engine). |
+| **Safari on macOS** | Same extension binary as iPad | Build/test Safari Web Extension via Xcode; App Store or ad-hoc install. |
+| **Chrome / Arc / Edge (desktop)** | Fast dev loop + many users | Unpacked MV3 load; same `src/` bundled to `dist/`. |
+
+**Repository layout (rename is optional; keep `extension-safari/` as the workspace name):**
+
+```text
+extension-safari/          # shared extension monorepo (historical name)
+  src/                     # browser-agnostic core
+  dist/chrome/             # MV3 manifest + bundle for Chromium
+  dist/safari/             # MV3 manifest + bundle for Safari converter
+  safari-app/              # Xcode project from safari-web-extension-converter (committed)
+  test/fixtures/
+```
+
+**iPad networking (critical):** on iPad, `http://localhost:4000` is the **iPad itself**, not your Mac. For local-first dev:
+
+1. Run the portal on a machine on the same network with `HOST=0.0.0.0` (document in server README / `.env.example`).
+2. In extension **Options**, set portal URL to `http://<lan-ip>:4000` (e.g. `http://192.168.1.42:4000`).
+3. **Test connection** button must succeed from Safari on iPad before autofill is enabled.
+
+Production path for iPad-only users without a desktop: Phase 5 (hosted sync) or a simple tunnel — **out of Phase 2 scope**, but the extension must not hardcode `localhost`.
+
+**iPad UX constraints to design for in 2.5–2.8:**
+
+- Toolbar popup may be cramped → support **Safari Web Extension action + optional content-script “Autofill” chip** on apply pages.
+- Touch targets ≥ 44pt in popup/options.
+- `file` inputs on ATS pages: extension fills text fields only; **upload resume** stays manual on iPad (portal documents list + user picks file in Safari).
+- Split-screen: portal web app in one Safari window/tab, application form in another — both work; packet API is the link.
+
+---
+
 ## 3. Known bottlenecks and how this plan addresses them
 
 | Bottleneck | Why it hurts | Mitigation in this plan |
@@ -66,7 +104,8 @@ See [shared conventions](./README.md) (work-unit template, migrations, orchestra
                 │                               │
         ┌───────▼────────┐              ┌───────▼────────┐
         │  Portal APIs    │              │ Browser extension│
-        │  /applications/*│              │ (Chrome + Safari)│
+        │  /applications/*│              │ Safari iPad/mac +  │
+        │ Chrome desktop     │
         │  /packet        │◄─────────────│ popup + content  │
         │  /extension/*   │   packet     │ fieldMaps/*      │
         └───────┬────────┘              └──────────────────┘
@@ -82,7 +121,7 @@ See [shared conventions](./README.md) (work-unit template, migrations, orchestra
 
 ## 5. Work units (strict order)
 
-**Units:** `2.0 → 2.1 → 2.2 → 2.3 → 2.4 → 2.5 → 2.6 → 2.7 → 2.8`  
+**Units:** `2.0 → 2.1 → 2.2 → 2.3 → 2.4 → 2.5 → 2.5b → 2.6 → 2.7 → 2.8`  
 One unit ≈ one PR. Do not skip **2.0** — it prevents UI/API sprawl.
 
 ---
@@ -214,26 +253,55 @@ One unit ≈ one PR. Do not skip **2.0** — it prevents UI/API sprawl.
 
 ---
 
-### Unit 2.5 — Production extension shell (buildable MV3)
+### Unit 2.5 — Shared extension core + dual browser builds (Chrome + Safari)
 
-> **Objective:** replace the scaffold with a bundled, configurable Chrome/Safari extension.
+> **Objective:** one bundled codebase, **two shippable targets** (Chromium MV3 + Safari Web Extension).
 
 - **Depends on:** 2.4.
-- **Packages:** `esbuild` in `extension-safari/` workspace.
-- **Structure:**
-  ```text
-  extension-safari/
-    package.json, build.js, manifest.json
-    src/content.js, popup.*, options.*
-    src/fieldMaps/{index,generic,greenhouse,lever,ashby,workday,...}.js
-    src/shared/{portalClient,domFields,safety}.js
-    test/fixtures/, dist/
-  ```
-- **Behaviour:** options (portal URL, test connection); popup (hostname, pick application, preview, autofill empty, copy packet); **never submit**; `input`/`change` after fill.
-- **Safari:** document `xcrun safari-web-extension-converter ./dist` → commit `extension-safari/safari-app/` or document reproducible CI step.
-- **Tests:** build succeeds; no top-level ESM `export` in content bundle; popup handles portal down.
-- **Acceptance:** loads unpacked in Chrome; Safari conversion documented.
-- **Commit:** `feat(extension): buildable autofill extension shell`
+- **Packages:** `esbuild` in `extension-safari/`; `webextension-polyfill` only if `browser.*` vs `chrome.*` divergence grows.
+- **Build outputs:**
+  - `npm run build` → `dist/chrome/` and `dist/safari/` (same JS; manifest/icons differ where required).
+  - Safari converter input is always `dist/safari/`.
+- **Shared `src/`:**
+  - `content.js`, `popup.*`, `options.*`
+  - `shared/portalClient.js` — fetch packet; **no hardcoded host**; reads from `browser.storage.sync`
+  - `shared/storage.js` — abstracts `chrome.storage` / `browser.storage`
+  - `fieldMaps/*`, `shared/domFields.js`, `shared/safety.js`
+- **Behaviour (both browsers):** options (portal URL, **Test connection**, privacy copy); popup (hostname, select application, preview, autofill empty, copy packet); **never submit**; `input`/`change` after fill.
+- **API surface:** use `browser.*` namespace in source; thin adapter or polyfill for Chromium.
+- **Tests:** build both targets; no top-level ESM `export` in content bundle; popup handles portal unreachable; storage round-trip.
+- **Acceptance:**
+  - **Chrome:** loads unpacked from `dist/chrome/`; autofill hits packet API on desktop.
+  - **Safari:** `xcrun safari-web-extension-converter dist/safari --project-location safari-app` produces a reproducible Xcode project (committed or CI-artifact).
+- **Commit:** `feat(extension): dual Chrome + Safari builds from shared core`
+
+---
+
+### Unit 2.5b — Safari on iPadOS (primary mobile ship path)
+
+> **Objective:** prove the extension works on **Safari for iPad** — the main mobile apply surface.
+
+- **Depends on:** 2.5, 2.5b (maps validated on Safari iPad before Phase 2 sign-off).
+- **Server / portal (document + minimal config):**
+  - `.env.example`: `HOST=0.0.0.0` so LAN devices can reach the API.
+  - README: “Using the extension on iPad” — find Mac/LAN IP, allow local network if prompted, set URL in extension options.
+  - Optional dev-only: mDNS hint `http://<hostname>.local:4000` if reliable on your network.
+- **Safari / Xcode:**
+  - Enable extension in **Settings → Apps → Safari → Extensions** on iPad.
+  - Distribution path documented: **development** (Xcode run to device), **Ad Hoc**, or **TestFlight** — pick one and document steps in `extension-safari/README.md`.
+  - `safari-app/` target supports **iOS + macOS** (or separate targets from same `dist/safari`).
+- **iPad-specific UX:**
+  - Popup layout responsive (min width, scroll, 44pt controls).
+  - If popup is too small for review, add optional **content-script banner** on detected apply pages: “Review autofill” → opens popup or inline preview list.
+  - **Connection test** shows clear errors: unreachable host, CORS, HTTP not HTTPS (local HTTP is OK on LAN).
+- **CORS / security:** `/api/extension/*` allows Safari extension origins from **both** macOS and iPad builds (may differ extension IDs — register both or use a shared app group during dev).
+- **Tests:** automated — viewport fixtures at iPad width for popup HTML; manual — required in acceptance.
+- **Acceptance (manual, on physical iPad):**
+  1. Portal running on LAN; extension options → Test connection **green**.
+  2. Open a Greenhouse (or Lever) apply URL in Safari.
+  3. Select saved application → preview → autofill empty fields → user submits manually.
+  4. Activity shows `autofill_run` in portal (from iPad).
+- **Commit:** `feat(extension): Safari on iPad install path and LAN portal docs`
 
 ---
 
@@ -246,7 +314,7 @@ One unit ≈ one PR. Do not skip **2.0** — it prevents UI/API sprawl.
 - **Logic:** `detectAts(hostname)` → map id; `extractFields(document)` → normalized fields; `matchPacketField(field, packet)` → value + confidence; fill only above threshold; return skipped reasons.
 - **Innovation:** fixture HTML per ATS under `extension-safari/test/fixtures/`; optional “map trainer” dev page to export JSON for new hosts.
 - **Tests:** each fixture fills name/email/phone/LinkedIn where present; **skips** EEO/SSN; generic fallback on unknown HTML.
-- **Acceptance:** known ATS fixtures green in CI; sensitive fields never filled.
+- **Acceptance:** known ATS fixtures green in CI; sensitive fields never filled; **at least one ATS apply URL verified in Safari on iPad** (manual sign-off).
 - **Commit:** `feat(extension): ATS field maps and fixture lab`
 
 ---
@@ -271,7 +339,7 @@ One unit ≈ one PR. Do not skip **2.0** — it prevents UI/API sprawl.
   ```
 - **Backend:**
   - `POST/GET /api/applications/:id/events`
-  - `POST /api/extension/context` — accepts scraped `{ fields, jobContext }`; returns field→answer map (use `answerQuestion` / retrieval when 3.5.2+ ready). **CORS: extension origin only.**
+  - `POST /api/extension/context` — accepts scraped `{ fields, jobContext }`; returns field→answer map (use `answerQuestion` / retrieval when 3.5.2+ ready). **CORS: allowlisted extension origins (Chrome + Safari macOS + Safari iPad bundle IDs).**
   - `POST /api/extension/save-job` — push listing into tracker from content script.
   - Extension posts `autofill_run` events: `{ hostname, filledCount, skippedCount, ats }` — **no field values**.
 - **Frontend:** Activity timeline; **Mark submitted** → status `applied`, complete submit task, event.
@@ -288,7 +356,7 @@ One unit ≈ one PR. Do not skip **2.0** — it prevents UI/API sprawl.
 - **Depends on:** 2.5, 2.6, 2.7.
 - **Backend:** `GET /api/assistant/apply-policy` — `{ canSubmit: false, sensitiveDenylist, extensionVersion }`.
 - **Extension:** prefill **preview** before write; **undo last autofill** (in-memory previous values); optional “fill existing fields” default **off**.
-- **Frontend:** Settings — fill-existing toggle, custom-field toggle, extension install instructions.
+- **Frontend:** Settings — fill-existing toggle, custom-field toggle, extension install instructions (**Safari on iPad** and Chrome desktop).
 - **Tests:** denylist labels blocked; undo restores fixture values; policy always `canSubmit: false`.
 - **Acceptance:** reviewer can confirm no submit and no sensitive fill by default.
 - **Commit:** `fix(apply): harden extension safety policy`
@@ -302,7 +370,8 @@ One unit ≈ one PR. Do not skip **2.0** — it prevents UI/API sprawl.
 - [ ] **2.2** Checklist with deadlines; progress on cards and dashboard.
 - [ ] **2.3** Apply plan works with and without `ANTHROPIC_API_KEY`.
 - [ ] **2.4** Packet API powers portal copy and extension.
-- [ ] **2.5–2.6** Extension builds, loads in Chrome, Safari path documented; **≥4 ATS fixtures** green; generic fallback works.
+- [ ] **2.5–2.5b** Shared core builds **Chrome + Safari**; Safari Web Extension runs on **iPad** with LAN portal URL; connection test works.
+- [ ] **2.6** **≥4 ATS fixtures** green in CI; **≥1 ATS apply flow verified on Safari iPad**; generic fallback works.
 - [ ] **2.7** Activity log records autofill and submit; extension routes origin-locked.
 - [ ] **2.8** No auto-submit; sensitive fields skipped; preview + undo available.
 - [ ] All server + extension unit tests pass; `npm run lint` clean; manual walkthrough on one real Greenhouse or Lever posting.
@@ -325,19 +394,35 @@ One unit ≈ one PR. Do not skip **2.0** — it prevents UI/API sprawl.
 |-----------|-------|----------------------|
 | **M1 — Workspace** | 2.0–2.2 | Checklist + doc attachments in portal |
 | **M2 — Intelligence** | 2.3–2.4 | Job-specific plan + one-click packet |
-| **M3 — Extension core** | 2.5–2.6 | Real autofill on major ATS in Chrome |
-| **M4 — Trust & audit** | 2.7–2.8 | Activity log, safety policy, Safari path |
+| **M3 — Extension core** | 2.5–2.5b–2.6 | Autofill on major ATS in **Safari (iPad)** and Chrome desktop |
+| **M4 — Trust & audit** | 2.7–2.8 | Activity log, safety policy, iPad-friendly preview/undo |
 
 ---
 
 ## 9. Manual validation script (before calling Phase 2 done)
 
+### A. Portal (any browser)
+
 1. Save a job from Search → open workspace → attach default resume.
 2. Run “Suggest apply plan” → add tasks → complete “Select resume”.
-3. Install unpacked extension → set portal URL → open a **Greenhouse** application URL.
-4. Select the application in popup → preview fields → autofill empty fields.
-5. Confirm sensitive dropdowns untouched → mark submitted in portal → see activity event.
-6. Repeat with API key off — template plan and heuristic autofill still work.
+
+### B. Chrome desktop (dev smoke)
+
+3. Load unpacked `dist/chrome/` → set portal URL (`http://localhost:4000` or LAN IP).
+4. Open a **Greenhouse** apply URL → select application → preview → autofill empty fields.
+
+### C. Safari on iPad (**required** — primary mobile)
+
+5. On Mac: run portal with `HOST=0.0.0.0`; note LAN IP.
+6. Install Safari extension to iPad (Xcode → device, or TestFlight).
+7. Extension options → portal URL `http://<lan-ip>:4000` → **Test connection** succeeds.
+8. On iPad Safari, open the same Greenhouse apply URL → autofill → **you** tap Submit.
+9. Confirm sensitive/EEO fields untouched; portal Activity shows `autofill_run` from extension.
+
+### D. Fallback paths
+
+10. Repeat C with API key off — template plan and heuristic autofill still work.
+11. Confirm mobile **Chrome on iPad does not ship this extension** (documented limitation; Safari only).
 
 ---
 

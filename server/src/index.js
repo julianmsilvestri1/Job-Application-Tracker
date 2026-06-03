@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 
 import './db.js'; // initialize schema on boot
 import { backfillPendingExtractions } from './services/documents/extractionQueue.js';
-import { backfillEmbeddings } from './services/ai/indexer.js';
 import profileRouter from './routes/profile.js';
 import documentsRouter from './routes/documents.js';
 import jobsRouter from './routes/jobs.js';
@@ -51,9 +50,10 @@ app.use((err, _req, res, _next) => {
 });
 
 backfillPendingExtractions();
-backfillEmbeddings();
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`Job Application Tracker API listening on http://localhost:${PORT}`);
+const HOST = process.env.HOST || '127.0.0.1';
+app.listen(PORT, HOST, () => {
+  const where = HOST === '0.0.0.0' ? `http://0.0.0.0:${PORT} (LAN devices, e.g. iPad extension)` : `http://localhost:${PORT}`;
+  console.log(`Job Application Tracker API listening on ${where}`);
 });

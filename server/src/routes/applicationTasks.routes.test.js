@@ -69,3 +69,19 @@ test('deleting the application cascades to its tasks', () => {
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM application_tasks').get().n, 0);
   db.close();
 });
+
+test('grouped task-progress query reports done/total per application in one pass', () => {
+  const db = freshDb();
+  const a = newApp(db, 'A');
+  const b = newApp(db, 'B');
+  const ins = db.prepare('INSERT INTO application_tasks (application_id, label, done) VALUES (?,?,?)');
+  ins.run(a, 't1', 1); ins.run(a, 't2', 0); ins.run(a, 't3', 1);
+  ins.run(b, 't1', 0);
+  const rows = db.prepare(
+    'SELECT application_id, COUNT(*) AS total, COALESCE(SUM(done), 0) AS done FROM application_tasks GROUP BY application_id',
+  ).all();
+  const map = new Map(rows.map((r) => [r.application_id, { done: Number(r.done), total: Number(r.total) }]));
+  assert.deepEqual(map.get(a), { done: 2, total: 3 });
+  assert.deepEqual(map.get(b), { done: 0, total: 1 });
+  db.close();
+});

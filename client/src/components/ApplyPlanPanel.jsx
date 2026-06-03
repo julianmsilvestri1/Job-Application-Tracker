@@ -9,10 +9,12 @@ export default function ApplyPlanPanel({ applicationId, plan, aiEnabled, onChang
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
 
-  async function generate({ mergeTasks = false } = {}) {
+  // refresh regenerates the plan (Suggest / Regenerate); merge keeps the shown
+  // plan and only adds its suggested tasks to the checklist.
+  async function generate({ mergeTasks = false, refresh = true } = {}) {
     setBusy(true);
     try {
-      const res = await api.generateApplyPlan(applicationId, { refresh: true, mergeTasks });
+      const res = await api.generateApplyPlan(applicationId, { refresh, mergeTasks });
       if (res.warning) toast(res.warning, 'error');
       if (mergeTasks) {
         toast(res.mergedTaskCount ? `Added ${res.mergedTaskCount} task(s) to the checklist` : 'No new tasks to add', 'success');
@@ -64,7 +66,7 @@ export default function ApplyPlanPanel({ applicationId, plan, aiEnabled, onChang
           {busy ? 'Working…' : plan ? '↻ Regenerate plan' : 'Suggest apply plan'}
         </button>
         {plan?.suggested_tasks?.length > 0 && (
-          <button className="btn small secondary" disabled={busy} onClick={() => generate({ mergeTasks: true })}>
+          <button className="btn small secondary" disabled={busy} onClick={() => generate({ mergeTasks: true, refresh: false })}>
             Add suggested tasks
           </button>
         )}

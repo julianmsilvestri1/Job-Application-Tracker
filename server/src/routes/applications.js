@@ -82,17 +82,22 @@ router.get('/', (req, res) => {
   const rows = status
     ? db.prepare('SELECT * FROM applications WHERE status = ? ORDER BY updated_at DESC').all(status)
     : db.prepare('SELECT * FROM applications ORDER BY updated_at DESC').all();
-  res.json(rows.map((r) => ({ ...r, remote: Boolean(r.remote), taskProgress: taskProgressFor(r.id) })));
+  const progress = taskProgressMap();
+  res.json(rows.map((r) => ({
+    ...r,
+    remote: Boolean(r.remote),
+    taskProgress: progress.get(r.id) || { done: 0, total: 0 },
+  })));
 });
 
-// Checklist progress for one application (Unit 2.2). Tolerant of the
-// not-yet-migrated table so it is safe to call before migration 9.
-function taskProgressFor(applicationId) {
-  if (!tableExists(db, 'application_tasks')) return { done: 0, total: 0 };
-  const row = db.prepare(
-    'SELECT COUNT(*) AS total, COALESCE(SUM(done), 0) AS done FROM application_tasks WHERE application_id = ?',
-  ).get(applicationId);
-  return { done: Number(row.done), total: Number(row.total) };
+// Checklist progress for every application in one grouped query (Unit 2.2).
+// Tolerant of the not-yet-migrated table so it is safe to call before migration 9.
+function taskProgressMap() {
+  if (!tableExists(db, 'application_tasks')) return new Map();
+  const rows = db.prepare(
+    'SELECT application_id, COUNT(*) AS total, COALESCE(SUM(done), 0) AS done FROM application_tasks GROUP BY application_id',
+  ).all();
+  return new Map(rows.map((r) => [r.application_id, { done: Number(r.done), total: Number(r.total) }]));
 }
 
 // Counts per status for the dashboard, plus checklist due-soon/overdue rollups.

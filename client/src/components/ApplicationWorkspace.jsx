@@ -57,6 +57,7 @@ export default function ApplicationWorkspace({ applicationId, aiEnabled, onBack,
         onChangeStatus={(status) => patch({ status }, `Moved to ${status}`)}
         onSaveNotes={(notes) => patch({ notes })}
         onOpenAssistant={() => setAssistOpen(true)}
+        onReload={() => { load(); onChanged?.(); }}
       />
 
       {assistOpen && (

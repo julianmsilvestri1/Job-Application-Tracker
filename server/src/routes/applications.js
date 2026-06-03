@@ -24,6 +24,21 @@ function childRows(database, table, applicationId, orderBy = 'id') {
     .all(applicationId);
 }
 
+// Attached documents, joined with the document record for the metadata the
+// workspace needs (filename, extraction status, etc.). Unit 2.1.
+function attachedDocuments(database, applicationId) {
+  if (!tableExists(database, 'application_documents')) return [];
+  return database.prepare(`
+    SELECT ad.document_id, ad.role, ad.variant_tag, ad.label, ad.attached_at,
+           d.original_name, d.mimetype, d.size, d.type AS document_type,
+           d.extraction_status, d.text_chars, d.is_default
+    FROM application_documents ad
+    JOIN documents d ON d.id = ad.document_id
+    WHERE ad.application_id = ?
+    ORDER BY ad.attached_at DESC
+  `).all(applicationId);
+}
+
 export function serializeApplication(database, row) {
   if (!row) return null;
   const applyPlan = tableExists(database, 'apply_plans')
@@ -32,7 +47,7 @@ export function serializeApplication(database, row) {
   return {
     ...row,
     remote: Boolean(row.remote),
-    documents: childRows(database, 'application_documents', row.id, 'attached_at DESC'),
+    documents: attachedDocuments(database, row.id),
     tasks: childRows(database, 'application_tasks', row.id, 'sort_order, id'),
     answers: childRows(database, 'application_answers', row.id, 'created_at DESC'),
     events: childRows(database, 'application_events', row.id, 'created_at DESC'),
@@ -153,6 +168,77 @@ router.post('/:id/answers', (req, res) => {
     aiDraft: b.ai_draft, finalText: b.answer, source: b.source || 'manual',
   });
   res.status(201).json(db.prepare('SELECT * FROM application_answers WHERE id = ?').get(info.lastInsertRowid));
+});
+
+// --- Linked documents (Unit 2.1) ------------------------------------------
+const DOC_ROLES = ['resume', 'cover_letter', 'portfolio', 'references', 'transcript', 'other'];
+
+// Return one application's attached documents (joined with their metadata).
+function listAttachedDocuments(applicationId) {
+  return attachedDocuments(db, applicationId);
+}
+
+router.get('/:id/documents', (req, res) => {
+  res.json(listAttachedDocuments(Number(req.params.id)));
+});
+
+// Attach a document to an application. A document is attached once per
+// application (single role/variant/label), so re-attaching replaces the prior
+// link rather than accumulating duplicate rows.
+router.post('/:id/documents', (req, res) => {
+  const id = Number(req.params.id);
+  const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
+  if (!app) return res.status(404).json({ error: 'Application not found' });
+
+  const b = req.body || {};
+  const documentId = Number(b.documentId);
+  if (!documentId) return res.status(400).json({ error: 'documentId is required.' });
+  const doc = db.prepare('SELECT id FROM documents WHERE id = ?').get(documentId);
+  if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+  const role = DOC_ROLES.includes(b.role) ? b.role : 'resume';
+  db.transaction(() => {
+    db.prepare('DELETE FROM application_documents WHERE application_id = ? AND document_id = ?')
+      .run(id, documentId);
+    db.prepare(`
+      INSERT INTO application_documents (application_id, document_id, role, variant_tag, label)
+      VALUES (@application_id, @document_id, @role, @variant_tag, @label)
+    `).run({
+      application_id: id, document_id: documentId, role,
+      variant_tag: b.variantTag || '', label: b.label || '',
+    });
+  })();
+
+  const attached = listAttachedDocuments(id).find((d) => d.document_id === documentId);
+  res.status(201).json(attached);
+});
+
+// Update an attachment's role / variant tag / label.
+router.patch('/:id/documents/:documentId', (req, res) => {
+  const id = Number(req.params.id);
+  const documentId = Number(req.params.documentId);
+  const existing = db.prepare(
+    'SELECT * FROM application_documents WHERE application_id = ? AND document_id = ?',
+  ).get(id, documentId);
+  if (!existing) return res.status(404).json({ error: 'Attachment not found' });
+
+  const b = req.body || {};
+  const fields = {};
+  if ('role' in b && DOC_ROLES.includes(b.role)) fields.role = b.role;
+  if ('variantTag' in b) fields.variant_tag = b.variantTag || '';
+  if ('label' in b) fields.label = b.label || '';
+  if (Object.keys(fields).length) {
+    const set = Object.keys(fields).map((k) => `${k} = @${k}`).join(', ');
+    db.prepare(`UPDATE application_documents SET ${set} WHERE application_id = @id AND document_id = @documentId`)
+      .run({ ...fields, id, documentId });
+  }
+  res.json(listAttachedDocuments(id).find((d) => d.document_id === documentId));
+});
+
+router.delete('/:id/documents/:documentId', (req, res) => {
+  db.prepare('DELETE FROM application_documents WHERE application_id = ? AND document_id = ?')
+    .run(Number(req.params.id), Number(req.params.documentId));
+  res.status(204).end();
 });
 
 export default router;

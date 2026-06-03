@@ -12,6 +12,10 @@ vi.mock('../api.js', () => ({
     getAnswers: vi.fn(),
     generateCoverLetter: vi.fn(),
     answerQuestion: vi.fn(),
+    getDocuments: vi.fn(),
+    attachDocument: vi.fn(),
+    detachDocument: vi.fn(),
+    downloadUrl: (id) => `/api/documents/${id}/download`,
   },
 }));
 
@@ -23,6 +27,7 @@ beforeEach(() => {
     documents: [], tasks: [], answers: [], events: [], applyPlan: null,
   });
   api.getAnswers.mockResolvedValue([]);
+  api.getDocuments.mockResolvedValue([]);
 });
 
 test('workspace renders the fixed sections for a loaded application', async () => {

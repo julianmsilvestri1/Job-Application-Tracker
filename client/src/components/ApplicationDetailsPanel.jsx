@@ -1,5 +1,6 @@
 import ApplicationDocuments from './ApplicationDocuments.jsx';
 import ApplicationChecklist from './ApplicationChecklist.jsx';
+import ApplyPlanPanel from './ApplyPlanPanel.jsx';
 
 // The fixed-section layout for one application's workspace (Unit 2.0).
 // Sections are always present; later units fill their bodies:
@@ -73,9 +74,12 @@ export default function ApplicationDetailsPanel({
       </Section>
 
       <Section title="Apply plan">
-        {app.applyPlan
-          ? <div className="muted">Apply plan generated.</div>
-          : <div className="empty">No apply plan generated yet.</div>}
+        <ApplyPlanPanel
+          applicationId={app.id}
+          plan={app.applyPlan}
+          aiEnabled={aiEnabled}
+          onChanged={onReload}
+        />
       </Section>
 
       <Section title="Packet">

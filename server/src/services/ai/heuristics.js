@@ -151,6 +151,73 @@ export function heuristicQueries({ profile = {}, experiences = [] } = {}, intent
   return { queries: queries.length ? queries : [{ query: intent || 'jobs' }], rationale };
 }
 
+// Deterministic apply plan from the job text alone (no API key needed).
+// Detects required materials, likely screening questions, risk warnings, and
+// sector-specific tasks. Used as the template fallback for orchestrator.applyPlan.
+export function heuristicApplyPlan(application = {}) {
+  const text = `${application.title || ''} ${application.description || ''}`.toLowerCase();
+  const has = (...words) => words.some((w) => text.includes(w));
+  const requirements = [];
+  const suggested_tasks = [];
+  const likely_questions = [];
+  const warnings = [];
+  const seen = new Set();
+  const addTask = (label, category = 'apply') => {
+    const k = label.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    suggested_tasks.push({ label, category });
+  };
+
+  // Required materials.
+  if (has('cover letter')) {
+    requirements.push('Cover letter');
+    addTask('Write a tailored cover letter', 'document');
+  }
+  if (has('portfolio', 'dribbble', 'behance', 'work samples', 'writing samples', 'design samples', 'github')) {
+    requirements.push('Portfolio / work samples');
+    addTask('Prepare portfolio / work samples', 'document');
+  }
+  if (has('transcript')) {
+    requirements.push('Transcript');
+    addTask('Locate official transcript', 'document');
+  }
+  if (has('references')) requirements.push('References');
+
+  // Likely screening questions (exact stored answers come in 2.7).
+  if (has('sponsorship', 'visa', 'authorized to work', 'work authorization')) {
+    likely_questions.push('Will you now or in the future require visa sponsorship?');
+  }
+  if (has("driver's license", 'drivers license', 'driver license')) {
+    likely_questions.push("Do you hold a valid driver's license?");
+  }
+  if (has('bilingual', 'language proficiency', 'fluent in')) {
+    likely_questions.push('What is your language proficiency?');
+  }
+  if (has('security clearance', 'clearance')) {
+    likely_questions.push('Do you hold an active security clearance?');
+    warnings.push('Role may require a government security clearance.');
+  }
+
+  // Sector signals → networking + narrative tasks for high-stakes roles.
+  if (has('private equity', 'investment bank', 'm&a', 'buyout', 'hedge fund', 'boutique')) {
+    addTask('Reach out to one associate or VP on LinkedIn', 'networking');
+    addTask('Prepare deal / transaction talking points', 'document');
+    addTask('Research recent firm deals or portfolio companies', 'apply');
+  } else if (has('real estate', 'acquisitions', 'underwriting', 'development')) {
+    addTask('Prepare a project / portfolio summary', 'document');
+    addTask("Research the firm's recent projects", 'apply');
+  } else if (has('quant', 'analytics', 'data scien', 'machine learning')) {
+    addTask('Align technical stack narrative (Python / R / SQL)', 'apply');
+    addTask('Prepare a case study or take-home if mentioned', 'apply');
+  }
+
+  // Always finish with a follow-up.
+  addTask('Follow up one week after applying', 'follow_up');
+
+  return { requirements, suggested_tasks, likely_questions, warnings };
+}
+
 // --- small helpers ---------------------------------------------------------
 
 function unique(arr) {

@@ -73,3 +73,42 @@ export function seedTasks(db, applicationId, pack) {
   insertAll(tasks);
   return tasks.length;
 }
+
+// Merge AI-suggested tasks into an application's checklist (Unit 2.3).
+// Dedupes case-insensitively against existing task labels so re-running the
+// apply plan never produces duplicates. Returns the number inserted.
+export function mergeSuggestedTasks(db, applicationId, suggestedTasks = []) {
+  const hasTable = db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'application_tasks'",
+  ).get();
+  if (!hasTable) return 0;
+
+  const existing = new Set(
+    db.prepare('SELECT label FROM application_tasks WHERE application_id = ?')
+      .all(applicationId)
+      .map((r) => String(r.label).trim().toLowerCase()),
+  );
+  let order = db.prepare(
+    'SELECT COALESCE(MAX(sort_order), -1) AS m FROM application_tasks WHERE application_id = ?',
+  ).get(applicationId).m;
+
+  const insert = db.prepare(`
+    INSERT INTO application_tasks (application_id, label, category, source, sort_order)
+    VALUES (@application_id, @label, @category, 'ai', @sort_order)
+  `);
+  let inserted = 0;
+  const run = db.transaction((rows) => {
+    for (const t of rows) {
+      const label = String(t?.label || '').trim();
+      if (!label) continue;
+      const k = label.toLowerCase();
+      if (existing.has(k)) continue;
+      existing.add(k);
+      order += 1;
+      insert.run({ application_id: applicationId, label, category: t.category || 'apply', sort_order: order });
+      inserted += 1;
+    }
+  });
+  run(suggestedTasks);
+  return inserted;
+}

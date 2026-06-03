@@ -242,6 +242,25 @@ export const migrations = [
       CREATE INDEX IF NOT EXISTS idx_app_tasks_application ON application_tasks(application_id);
     `);
   },
+
+  // --- Migration 10: AI apply plan (Unit 2.3) ------------------------------
+  // Caches the generated plan (required materials, suggested tasks, likely
+  // questions, warnings) per application. One row per application.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS apply_plans (
+        application_id   INTEGER PRIMARY KEY,
+        source           TEXT DEFAULT 'template',  -- ai | template
+        requirements     TEXT DEFAULT '[]',        -- JSON array of strings
+        suggested_tasks  TEXT DEFAULT '[]',        -- JSON array of { label, category }
+        likely_questions TEXT DEFAULT '[]',        -- JSON array of strings
+        warnings         TEXT DEFAULT '[]',        -- JSON array of strings
+        created_at       TEXT DEFAULT (datetime('now')),
+        updated_at       TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
+      );
+    `);
+  },
 ];
 
 export function runMigrations(db) {

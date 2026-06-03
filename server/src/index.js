@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import './db.js'; // initialize schema on boot
 import { backfillPendingExtractions } from './services/documents/extractionQueue.js';
+import { backfillEmbeddings } from './services/ai/indexer.js';
 import profileRouter from './routes/profile.js';
 import documentsRouter from './routes/documents.js';
 import jobsRouter from './routes/jobs.js';
@@ -50,6 +51,7 @@ app.use((err, _req, res, _next) => {
 });
 
 backfillPendingExtractions();
+backfillEmbeddings();
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {

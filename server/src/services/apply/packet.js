@@ -8,6 +8,16 @@ export const REDACTED_FIELDS = [
   'Sexual orientation', 'Disability status', 'Veteran status', 'Date of birth', 'Age',
 ];
 
+// Whole-word keyword triggers used to refuse fabricating EEO/PII fields
+// regardless of how the form phrases them ("Are you a protected veteran?",
+// "Do you have a disability?"). Broader than the display list above; matched
+// with word boundaries so substrings like "age" in "Message" never trip.
+export const REDACTED_MATCH = [
+  'ssn', 'social security', 'eeo', 'race', 'ethnicity', 'ethnic', 'gender',
+  'sexual orientation', 'disability', 'veteran', 'date of birth', 'birthdate',
+  'birth date', 'age',
+];
+
 // Profile-derived autofill fields with form aliases + a sensitivity tag.
 const FIELD_SPECS = [
   { key: 'full_name', label: 'Full name', aliases: ['name', 'full name', 'your name', 'legal name'], sensitivity: 'public' },

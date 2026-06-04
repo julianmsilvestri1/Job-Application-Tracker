@@ -9,7 +9,9 @@
 //
 // The UI is mounted in a shadow root so page CSS can't affect it (or vice
 // versa). All data/formatting comes from the shared, unit-tested modules.
-import { portal } from './shared/portalClient.js';
+// Portal calls go through the background service worker (extension origin), not
+// a direct cross-origin fetch from the page — see shared/bgPortal.js.
+import { bgPortal as portal } from './shared/bgPortal.js';
 import { previewSummary, fieldsToText, answersToText } from './shared/packetView.js';
 import { isApplyPage, atsLabel } from './shared/applyTargets.js';
 

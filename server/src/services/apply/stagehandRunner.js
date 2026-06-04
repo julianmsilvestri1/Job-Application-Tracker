@@ -7,7 +7,7 @@
 // the real client is dynamically imported only when actually running.
 import crypto from 'node:crypto';
 import defaultDb from '../../db.js';
-import { buildPacket, REDACTED_FIELDS } from './packet.js';
+import { buildPacket, REDACTED_MATCH } from './packet.js';
 
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex').slice(0, 16);
 const norm = (s) => String(s || '').toLowerCase().trim();
@@ -20,21 +20,27 @@ function optionsHash(options) {
   return Array.isArray(options) && options.length ? sha(options.map(norm).join('|')) : '';
 }
 
-// A field whose label touches a redacted category must never be fabricated.
+// A field whose label touches a redacted/EEO category must never be fabricated.
+// Whole-word matching catches varied phrasing without false positives.
 export function isRedacted(label) {
   const l = norm(label);
-  return REDACTED_FIELDS.some((r) => l.includes(norm(r)));
+  return REDACTED_MATCH.some((r) => new RegExp(`\\b${escapeRegex(r)}\\b`).test(l));
 }
 
 // Pick the closest allowed <option> for a free value — never invents a value.
+// Exact match wins; otherwise require a WHOLE-WORD overlap so short values like
+// "No" don't get mapped to "Norway".
 export function resolveSelectAnswer(value, options) {
   if (!Array.isArray(options) || options.length === 0) return value || null;
   const v = norm(value);
   if (!v) return null;
   const exact = options.find((o) => norm(o) === v);
   if (exact) return exact;
-  const contains = options.find((o) => norm(o).includes(v) || v.includes(norm(o)));
-  return contains || null;
+  const word = (hay, needle) => new RegExp(`\\b${escapeRegex(needle)}\\b`).test(hay);
+  const inOption = options.find((o) => word(norm(o), v));        // "Citizen" → "U.S. Citizen"
+  if (inOption) return inOption;
+  const optInValue = options.find((o) => norm(o) && word(v, norm(o)));
+  return optInValue || null;
 }
 
 function jaccard(a, b) {

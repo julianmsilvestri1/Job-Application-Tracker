@@ -81,16 +81,22 @@ local dev.
 
 ```text
 src/
-  content.js              # thin: reports page hostname/url to the popup (no DOM fill)
+  background.js           # service worker: owns portal fetches (extension origin)
+  content.js              # GET_PAGE_INFO + optional inline review on apply pages
   popup.html / popup.js   # Trigger UI: select app, preview, copy, "Apply for me"
   options.html/options.js # portal URL + Test connection + privacy copy
   shared/storage.js       # browser.storage / chrome.storage abstraction
-  shared/portalClient.js  # packet + trigger-apply client (no hardcoded host)
+  shared/portalClient.js  # direct packet/trigger-apply client (no hardcoded host)
+  shared/bgPortal.js      # same API, proxied via the background (for the content script)
+  shared/messaging.js     # cross-engine runtime.sendMessage wrapper
+  shared/packetView.js    # packet → preview/copy text (shared by popup + inline review)
+  shared/applyTargets.js  # ATS apply-page detection
+  shared/connection.js    # Test-connection diagnostics
   manifest.chrome.json    # MV3 (Chromium)
   manifest.safari.json    # MV3 (Safari converter input)
 build.mjs                 # esbuild → dist/chrome + dist/safari (IIFE, no top-level export)
 scripts/build-safari.sh   # Xcode project generation (kept separate; brittle in CI)
-test/                     # build, storage round-trip, portal-unreachable
+test/                     # build, storage, portalClient, background, detection, layout
 ```
 
 ## Phase 2 plan

@@ -16,17 +16,24 @@ function freshDb() {
 }
 const seedApp = (db) => db.prepare("INSERT INTO applications (title) VALUES ('Analyst')").run().lastInsertRowid;
 
-test('resolveSelectAnswer matches exact/contains and never invents a value', () => {
+test('resolveSelectAnswer matches exact/whole-word and never invents a value', () => {
   assert.equal(resolveSelectAnswer('Yes', ['Yes', 'No']), 'Yes');
   assert.equal(resolveSelectAnswer('US Citizen', ['Citizen', 'Permanent Resident']), 'Citizen');
   assert.equal(resolveSelectAnswer('Martian', ['Yes', 'No']), null);
+  // exact wins and short values do not bleed into longer options
+  assert.equal(resolveSelectAnswer('No', ['Yes', 'No', 'Norway']), 'No');
+  assert.equal(resolveSelectAnswer('No', ['Yes', 'Norway']), null); // never maps "No" → "Norway"
 });
 
-test('isRedacted flags EEO/SSN-class fields only', () => {
+test('isRedacted catches varied EEO/PII phrasing without false positives', () => {
   assert.ok(isRedacted('Social Security Number'));
   assert.ok(isRedacted('Gender'));
-  assert.ok(isRedacted('Veteran status'));
+  assert.ok(isRedacted('Are you a protected veteran?'));
+  assert.ok(isRedacted('Do you have a disability?'));
+  assert.ok(isRedacted('Your age'));
   assert.ok(!isRedacted('Full name'));
+  assert.ok(!isRedacted('Message'));      // "age" inside "Message" must not trip
+  assert.ok(!isRedacted('Manager name')); // "Manager" must not match "age"
 });
 
 test('resolveField fills from packet, maps selects, and refuses redacted/unknown fields', () => {

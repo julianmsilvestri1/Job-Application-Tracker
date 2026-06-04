@@ -20,7 +20,10 @@ beforeEach(() => {
     applyPolicy: { redactedFields: [] },
     retrievalScope: { resumeDocumentIds: [1], variantTags: ['analytics'] },
   });
-  api.triggerApply.mockResolvedValue({ hostname: 'greenhouse.io', filledCount: 3, skippedCount: 1, submitted: true });
+  api.triggerApply.mockResolvedValue({
+    hostname: 'greenhouse.io', filledCount: 3, skippedCount: 1, submitted: true,
+    details: [{ label: 'Gender', action: 'skipped', reason: 'redacted' }],
+  });
 });
 
 function renderWith(application = { url: 'https://x.com' }) {
@@ -46,4 +49,5 @@ test('Apply for me triggers the backend and shows the run summary', async () => 
   fireEvent.click(screen.getByText('⚡ Apply for me'));
   await waitFor(() => expect(api.triggerApply).toHaveBeenCalledWith(1, 'https://x.com'));
   expect(await screen.findByText(/filled 3, skipped 1, submitted/)).toBeInTheDocument();
+  expect(await screen.findByText(/Skipped: 1 sensitive\/EEO/)).toBeInTheDocument();
 });

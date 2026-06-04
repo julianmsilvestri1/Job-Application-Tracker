@@ -1,0 +1,7 @@
+[
+  { "label": "First name", "type": "text" },
+  { "label": "Last name", "type": "text" },
+  { "label": "Email", "type": "email" },
+  { "label": "Do you now or in the future require visa sponsorship?", "type": "select", "options": ["Yes", "No"] },
+  { "label": "Language proficiency", "type": "select", "options": ["Native", "Professional", "Limited working"] }
+]

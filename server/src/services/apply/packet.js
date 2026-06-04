@@ -52,6 +52,17 @@ function humanize(key) {
 // Build the candidate.fields list (only fields that have a value).
 function candidateFields(profile) {
   const fields = [];
+
+  // Most ATS forms split the name — derive First/Last from full_name.
+  const fullName = String(profile.full_name || '').trim();
+  if (fullName) {
+    const [first, ...rest] = fullName.split(/\s+/);
+    fields.push({ label: 'First name', value: first, aliases: ['first name', 'given name', 'given-name', 'fname'], sensitivity: 'public' });
+    if (rest.length) {
+      fields.push({ label: 'Last name', value: rest.join(' '), aliases: ['last name', 'surname', 'family name', 'family-name', 'lname'], sensitivity: 'public' });
+    }
+  }
+
   for (const spec of FIELD_SPECS) {
     const value = profile[spec.key];
     if (value === undefined || value === null || value === '') continue;

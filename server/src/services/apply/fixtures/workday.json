@@ -1,0 +1,17 @@
+[
+  { "label": "Legal First Name", "type": "text", "required": true },
+  { "label": "Legal Last Name", "type": "text", "required": true },
+  { "label": "Email Address", "type": "text", "required": true },
+  { "label": "Phone Number", "type": "text" },
+  { "label": "What is your current work authorization status?", "type": "select",
+    "options": [{ "value": "citizen", "label": "U.S. Citizen" }, { "value": "gc", "label": "Green Card" }, { "value": "visa", "label": "Work Visa" }] },
+  { "label": "Will you now or in the future require sponsorship for an employment visa status?", "type": "select",
+    "options": [{ "value": "yes", "label": "Yes" }, { "value": "no", "label": "No" }] },
+  { "label": "Social Security Number", "type": "text" },
+  { "label": "Gender", "type": "select",
+    "options": [{ "value": "m", "label": "Male" }, { "value": "f", "label": "Female" }, { "value": "d", "label": "Decline to self-identify" }] },
+  { "label": "Are you a protected veteran?", "type": "select",
+    "options": [{ "value": "y", "label": "Yes" }, { "value": "n", "label": "No" }] },
+  { "label": "Country", "type": "select",
+    "options": [{ "value": "US", "label": "United States" }, { "value": "CA", "label": "Canada" }] }
+]

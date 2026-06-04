@@ -1,0 +1,7 @@
+[
+  { "label": "Full name", "type": "text", "required": true },
+  { "label": "Email", "type": "email", "currentValue": "already@filled.com" },
+  { "label": "Phone", "type": "tel" },
+  { "label": "Location", "type": "text" },
+  { "label": "GitHub", "type": "url" }
+]

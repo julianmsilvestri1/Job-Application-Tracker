@@ -37,3 +37,36 @@ test('POST /api/extension/trigger-apply requires applicationId and url', async (
     });
   });
 });
+
+test('the extension API is origin-locked: web origins are rejected, extension origins allowed', async () => {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/extension', extensionRouter);
+
+  await new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      const base = `http://127.0.0.1:${server.address().port}`;
+      const post = (origin) => fetch(`${base}/api/extension/trigger-apply`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin },
+        body: JSON.stringify({}),
+      });
+      try {
+        const evil = await post('https://evil.example.com');
+        assert.equal(evil.status, 403, 'a website origin is rejected');
+
+        const ext = await post('chrome-extension://abcdefghijklmnop');
+        assert.equal(ext.status, 400, 'an extension origin passes CORS (then hits validation)');
+        assert.equal(ext.headers.get('access-control-allow-origin'), 'chrome-extension://abcdefghijklmnop');
+
+        const safari = await post('safari-web-extension://1234-ABCD');
+        assert.equal(safari.status, 400, 'a Safari extension origin passes CORS');
+        resolve();
+      } catch (e) {
+        reject(e);
+      } finally {
+        server.close();
+      }
+    });
+  });
+});

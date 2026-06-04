@@ -20,8 +20,14 @@ function Section({ title, count, children }) {
   );
 }
 
+function formatTime(s) {
+  if (!s) return '';
+  const d = new Date(String(s).replace(' ', 'T') + (String(s).includes('Z') ? '' : 'Z'));
+  return Number.isNaN(d.getTime()) ? String(s) : d.toLocaleString();
+}
+
 export default function ApplicationDetailsPanel({
-  application: app, aiEnabled, onChangeStatus, onSaveNotes, onOpenAssistant, onReload,
+  application: app, aiEnabled, onChangeStatus, onSaveNotes, onOpenAssistant, onReload, onMarkSubmitted,
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
@@ -35,9 +41,14 @@ export default function ApplicationDetailsPanel({
         </div>
         <div className="field" style={{ marginTop: 12 }}>
           <label>Status</label>
-          <select value={app.status} onChange={(e) => onChangeStatus(e.target.value)} style={{ width: 'auto' }}>
-            {NEXT_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <select value={app.status} onChange={(e) => onChangeStatus(e.target.value)} style={{ width: 'auto' }}>
+              {NEXT_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            {app.status !== 'applied' && (
+              <button className="btn small" onClick={onMarkSubmitted}>✅ Mark submitted</button>
+            )}
+          </div>
         </div>
         <div className="field" style={{ marginTop: 12 }}>
           <label>Notes</label>
@@ -84,7 +95,7 @@ export default function ApplicationDetailsPanel({
       </Section>
 
       <Section title="Packet">
-        <ApplicationPacketPanel applicationId={app.id} application={app} />
+        <ApplicationPacketPanel applicationId={app.id} application={app} onChanged={onReload} />
       </Section>
 
       <Section title="Assistant">
@@ -102,9 +113,15 @@ export default function ApplicationDetailsPanel({
         {app.events.length === 0 ? (
           <div className="empty">No activity recorded yet.</div>
         ) : (
-          <ul>{app.events.map((e) => (
-            <li key={e.id}>{e.type}</li>
-          ))}</ul>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {app.events.map((e) => (
+              <li key={e.id} style={{ marginBottom: 4 }}>
+                <span className="badge source">{e.kind}</span>{' '}
+                {e.summary || ''}
+                <span className="muted"> · {formatTime(e.created_at)}</span>
+              </li>
+            ))}
+          </ul>
         )}
       </Section>
     </div>

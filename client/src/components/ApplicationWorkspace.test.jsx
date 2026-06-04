@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { vi, test, expect, beforeEach } from 'vitest';
 import ApplicationWorkspace from './ApplicationWorkspace.jsx';
@@ -18,6 +18,7 @@ vi.mock('../api.js', () => ({
     downloadUrl: (id) => `/api/documents/${id}/download`,
     getPacket: vi.fn(),
     triggerApply: vi.fn(),
+    markSubmitted: vi.fn(),
   },
 }));
 
@@ -53,4 +54,20 @@ test('workspace renders the fixed sections for a loaded application', async () =
   expect(screen.getByText('Packet')).toBeInTheDocument();
   expect(screen.getByText('Assistant')).toBeInTheDocument();
   expect(screen.getByText(/^Activity/)).toBeInTheDocument();
+});
+
+test('"Mark submitted" calls the API', async () => {
+  api.markSubmitted.mockResolvedValue({
+    id: 1, title: 'Frontend Engineer', company: 'Globex', status: 'applied',
+    documents: [], tasks: [], answers: [], events: [], applyPlan: null,
+  });
+  render(
+    <ToastProvider>
+      <BrowserRouter>
+        <ApplicationWorkspace applicationId={1} aiEnabled={false} onBack={() => {}} />
+      </BrowserRouter>
+    </ToastProvider>,
+  );
+  fireEvent.click(await screen.findByText('✅ Mark submitted'));
+  await waitFor(() => expect(api.markSubmitted).toHaveBeenCalledWith(1));
 });

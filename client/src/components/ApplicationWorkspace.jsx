@@ -31,6 +31,17 @@ export default function ApplicationWorkspace({ applicationId, aiEnabled, onBack,
     }
   }, [applicationId, toast, load, onChanged]);
 
+  const markSubmitted = useCallback(async () => {
+    try {
+      await api.markSubmitted(applicationId);
+      toast('Marked as submitted', 'success');
+      load();
+      onChanged?.();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }, [applicationId, toast, load, onChanged]);
+
   if (!app) {
     return (
       <div>
@@ -58,6 +69,7 @@ export default function ApplicationWorkspace({ applicationId, aiEnabled, onBack,
         onSaveNotes={(notes) => patch({ notes })}
         onOpenAssistant={() => setAssistOpen(true)}
         onReload={() => { load(); onChanged?.(); }}
+        onMarkSubmitted={markSubmitted}
       />
 
       {assistOpen && (

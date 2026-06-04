@@ -101,6 +101,23 @@ test('runApply extracts → fills → learns → submits, and reuses the cache o
   db.close();
 });
 
+test('runApply does not auto-submit when a required field is left unmet', async () => {
+  const db = freshDb();
+  const appId = seedApp(db);
+  const fields = [
+    { label: 'Full name', type: 'text', required: true },
+    { label: 'Portfolio URL', type: 'url', required: true }, // no vault data → unmet
+  ];
+  const acts = [];
+  const factory = async () => ({ extract: async () => fields, act: async (a) => { acts.push(a); }, close: async () => {} });
+  const r = await runApply({ applicationId: appId, url: 'https://jobs.lever.co/acme/x', db, stagehandFactory: factory });
+  assert.equal(r.requiredUnmet, 1);
+  assert.equal(r.submitted, false, 'an incomplete required form is not auto-submitted');
+  assert.ok(!acts.some((a) => a.submit), 'submit action is never issued');
+  assert.ok(acts.some((a) => a.field && a.field.label === 'Full name'), 'still fills what it can');
+  db.close();
+});
+
 test('runApply throws for an unknown application', async () => {
   const db = freshDb();
   await assert.rejects(

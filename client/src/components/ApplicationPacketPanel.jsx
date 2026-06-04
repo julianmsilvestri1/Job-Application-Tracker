@@ -106,6 +106,7 @@ export default function ApplicationPacketPanel({ applicationId, application }) {
       {run && (
         <p className="muted" style={{ marginTop: 8 }}>
           {run.hostname}: filled {run.filledCount}, skipped {run.skippedCount}{run.submitted ? ', submitted ✓' : ''}.
+          {!run.submitted && run.requiredUnmet > 0 && ` ${run.requiredUnmet} required field(s) need you — review and submit manually.`}
         </p>
       )}
       {run?.details?.length > 0 && summarizeSkips(run.details) && (

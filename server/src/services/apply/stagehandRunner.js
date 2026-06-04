@@ -181,7 +181,12 @@ export async function runApply({ applicationId, url, db = defaultDb, stagehandFa
     const details = []; // value-free audit: form labels + action/reason only
     let filledCount = 0;
     let skippedCount = 0;
-    const skip = (field, reason) => { skippedCount += 1; details.push({ label: field.label, action: 'skipped', reason }); };
+    let requiredUnmet = 0; // required fields left neither filled nor pre-filled
+    const skip = (field, reason) => {
+      skippedCount += 1;
+      details.push({ label: field.label, action: 'skipped', reason });
+      if (field.required && reason !== 'prefilled') requiredUnmet += 1;
+    };
 
     for (const field of fields) {
       if (isRedacted(field.label)) { skip(field, 'redacted'); continue; }
@@ -197,12 +202,14 @@ export async function runApply({ applicationId, url, db = defaultDb, stagehandFa
       details.push({ label: field.label, action: 'filled', strategy: resolved.strategy });
     }
 
+    // Only auto-submit a COMPLETE form: every required field filled or already
+    // present. Otherwise fill what we can and leave the rest for the user.
     let submitted = false;
-    if (packet.applyPolicy.canAutoSubmit && filledCount > 0) {
+    if (packet.applyPolicy.canAutoSubmit && filledCount > 0 && requiredUnmet === 0) {
       await sh.act({ submit: true });
       submitted = true;
     }
-    return { hostname: host, filledCount, skippedCount, submitted, details };
+    return { hostname: host, filledCount, skippedCount, requiredUnmet, submitted, details };
   } finally {
     if (sh && typeof sh.close === 'function') await sh.close();
   }

@@ -53,15 +53,29 @@ function cacheLookup(db, host, field) {
   return row ? { answer: row.answer, strategy: 'cache', vault_key: row.vault_key, confidence: row.confidence } : null;
 }
 
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// A single-word alias must equal the whole field label; a multi-word alias may
+// match as a whole phrase inside it. This avoids filling compound labels like
+// "Company name" / "School name" from the generic "name" alias.
+function aliasHits(target, alias) {
+  if (!alias) return false;
+  if (target === alias) return true;
+  if (alias.includes(' ')) return new RegExp(`\\b${escapeRegex(alias)}\\b`).test(target);
+  return false;
+}
+
 function packetLookup(field, packet) {
   const target = norm(field.label);
+  let best = null;
+  let bestLen = 0;
   for (const f of packet.candidate.fields) {
-    const names = [f.label, ...(f.aliases || [])].map(norm).filter(Boolean);
-    if (names.some((n) => target.includes(n) || n.includes(target))) {
-      return { answer: f.value, strategy: 'packet', vault_key: f.label, confidence: 0.9 };
+    for (const alias of [f.label, ...(f.aliases || [])].map(norm).filter(Boolean)) {
+      // Prefer the most specific (longest) matching alias.
+      if (aliasHits(target, alias) && alias.length > bestLen) { best = f; bestLen = alias.length; }
     }
   }
-  return null;
+  return best ? { answer: best.value, strategy: 'packet', vault_key: best.label, confidence: 0.9 } : null;
 }
 
 function answerLookup(field, packet) {

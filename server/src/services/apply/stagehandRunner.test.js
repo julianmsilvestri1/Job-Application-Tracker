@@ -46,6 +46,18 @@ test('resolveField fills from packet, maps selects, and refuses redacted/unknown
   db.close();
 });
 
+test('resolveField does not fill compound labels from a generic alias', () => {
+  const db = freshDb();
+  const app = db.prepare('SELECT * FROM applications WHERE id = ?').get(seedApp(db));
+  const ctx = { packet: buildPacket(db, app), host: 'x.com', db };
+  // "Company name" / "School name" must NOT inherit the candidate's full name.
+  assert.equal(resolveField({ label: 'Company name', type: 'text' }, ctx), null);
+  assert.equal(resolveField({ label: 'School name', type: 'text' }, ctx), null);
+  // but the real full-name field still resolves
+  assert.equal(resolveField({ label: 'Full name', type: 'text' }, ctx).answer, 'Jane Doe');
+  db.close();
+});
+
 test('runApply extracts → fills → learns → submits, and reuses the cache on a second run', async () => {
   const db = freshDb();
   const appId = seedApp(db);

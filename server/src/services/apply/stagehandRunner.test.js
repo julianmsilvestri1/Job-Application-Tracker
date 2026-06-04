@@ -136,6 +136,10 @@ test('runApply does NOT submit when a fill fails post-fill verification — it f
   assert.ok(/did not verify/.test(r.reviewReason), 'review reason explains the verification failure');
   assert.equal(r.submitted, false, 'an unverified form is never auto-submitted');
   assert.ok(!browser.acts.some((a) => a.submit), 'submit action is never issued');
+  // Only the VERIFIED fill (Full name) is learned — the unverified Email must
+  // not poison the semantic cache.
+  const learned = db.prepare("SELECT field_label FROM ats_field_mappings WHERE host = 'boards.greenhouse.io'").all();
+  assert.deepEqual(learned.map((r2) => r2.field_label), ['Full name']);
   db.close();
 });
 

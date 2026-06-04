@@ -4,7 +4,7 @@ import { recordEditIfAny } from '../services/answerMemory.js';
 import { seedTasks, mergeSuggestedTasks } from '../services/applyTaskTemplates.js';
 import { applyPlan as generateApplyPlan } from '../services/ai/orchestrator.js';
 import { buildPacket } from '../services/apply/packet.js';
-import { logEvent, recordSubmitted, clearReview } from '../services/apply/events.js';
+import { logEvent, recordSubmitted, clearReview, EVENT_KINDS } from '../services/apply/events.js';
 
 const router = Router();
 
@@ -425,6 +425,9 @@ router.post('/:id/events', (req, res) => {
   if (!app) return res.status(404).json({ error: 'Application not found' });
   const b = req.body || {};
   if (!b.kind) return res.status(400).json({ error: 'An event kind is required.' });
+  if (!EVENT_KINDS.includes(b.kind)) {
+    return res.status(400).json({ error: `Unknown event kind. Allowed: ${EVENT_KINDS.join(', ')}.` });
+  }
   res.status(201).json(logEvent(db, id, {
     kind: b.kind, source: b.source || 'portal', summary: b.summary, metadata: b.metadata,
   }));

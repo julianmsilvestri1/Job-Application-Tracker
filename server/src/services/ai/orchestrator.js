@@ -119,8 +119,19 @@ function formatRetrievedContext(profile, hits) {
 // When `useRetrieval` + `query` are given and embeddings exist, the bulky
 // experience/resume dump is replaced by the top-k retrieved chunks (RAG); the
 // full context is the fallback when retrieval yields nothing.
+// Resume document ids attached to a tracked application (role = resume), used
+// to scope RAG to that application's chosen variant (Unit 2.1/2.7).
+export function attachedResumeIds(db = defaultDb, applicationId) {
+  if (!applicationId) return null;
+  const has = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='application_documents'").get();
+  if (!has) return null;
+  const ids = db.prepare("SELECT document_id FROM application_documents WHERE application_id = ? AND role = 'resume'")
+    .all(applicationId).map((r) => r.document_id);
+  return ids.length ? ids : null;
+}
+
 export async function buildCandidateContext({
-  includeResume = true, db = defaultDb, query = '', useRetrieval = false, k = 5,
+  includeResume = true, db = defaultDb, query = '', useRetrieval = false, k = 5, resumeDocumentIds = null,
 } = {}) {
   const profile = loadProfile(db);
   const experiences = db.prepare('SELECT * FROM experiences ORDER BY sort_order, id DESC').all();
@@ -130,7 +141,7 @@ export async function buildCandidateContext({
   let text = formatCandidateContext({ profile, experiences, education, resumeText });
   let retrieved = false;
   if (useRetrieval && query) {
-    const hits = retrieve(db, query, k);
+    const hits = retrieve(db, query, k, { resumeDocumentIds });
     if (hits.length) { text = formatRetrievedContext(profile, hits); retrieved = true; }
   }
 
@@ -177,7 +188,8 @@ async function complete({ system, user, maxTokens = 800, jsonSchema = null }) {
 
 export async function coverLetter({ job, db = defaultDb, refresh = false }) {
   const query = `${job.title || ''} ${job.company || ''} ${(job.description || '').slice(0, 1500)}`;
-  const ctx = await buildCandidateContext({ includeResume: true, db, query, useRetrieval: true });
+  const resumeDocumentIds = attachedResumeIds(db, job.id);
+  const ctx = await buildCandidateContext({ includeResume: true, db, query, useRetrieval: true, resumeDocumentIds });
   if (!aiEnabled()) return { text: templateCoverLetter(ctx.profile, job), source: 'template' };
 
   const system =
@@ -208,7 +220,8 @@ export async function coverLetter({ job, db = defaultDb, refresh = false }) {
 
 export async function answerQuestion({ job = {}, question, db = defaultDb, refresh = false }) {
   const query = `${question} ${job.title || ''} ${job.company || ''}`;
-  const ctx = await buildCandidateContext({ includeResume: true, db, query, useRetrieval: true });
+  const resumeDocumentIds = attachedResumeIds(db, job.id);
+  const ctx = await buildCandidateContext({ includeResume: true, db, query, useRetrieval: true, resumeDocumentIds });
   if (!aiEnabled()) {
     return { text: templateAnswer(ctx.profile, job, question), source: 'template' };
   }

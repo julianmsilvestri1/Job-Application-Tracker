@@ -35,8 +35,11 @@ const hostOf = (url) => { try { return new URL(url).hostname; } catch { return '
 router.post('/trigger-apply', async (req, res) => {
   const { applicationId, url } = req.body || {};
   if (!applicationId || !url) return res.status(400).json({ error: 'applicationId and url are required.' });
+  const id = Number(applicationId);
+  if (!db.prepare('SELECT id FROM applications WHERE id = ?').get(id)) {
+    return res.status(404).json({ error: 'Application not found' });
+  }
   try {
-    const id = Number(applicationId);
     const summary = await runApply({ applicationId: id, url: String(url) });
     // Audit (no field values — counts/host only).
     logEvent(db, id, {

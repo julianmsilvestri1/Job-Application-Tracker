@@ -1,10 +1,14 @@
-// Stagehand autonomous apply service (Unit 2.4).
+// Stagehand autonomous apply service (Units 2.4 / 2.6 / 2.7).
 //
 // Connects to the user's active Chrome tab over CDP, extracts the live form,
-// resolves each field from cache → packet → persisted answers → apply plan,
-// fills via Stagehand, and (when policy allows) submits. The Stagehand client
-// is dependency-injected so the whole pipeline is unit-testable with a mock;
-// the real client is dynamically imported only when actually running.
+// resolves each field from cache → packet → persisted answers (EEO/redacted and
+// no-data fields are never fabricated), fills via Stagehand, then RE-READS the
+// form to verify each fill. It auto-submits ONLY a complete + verified form;
+// otherwise it returns a reviewReason so the caller flags the application for a
+// human. Successful, verified resolutions are learned into the semantic cache.
+// The Stagehand client is dependency-injected so the whole pipeline is
+// unit-testable with a mock; the real client is dynamically imported only when
+// actually running.
 import crypto from 'node:crypto';
 import defaultDb from '../../db.js';
 import { buildPacket, REDACTED_MATCH } from './packet.js';
@@ -219,18 +223,21 @@ export async function runApply({ applicationId, url, db = defaultDb, stagehandFa
       if ((resolved.confidence || 0) < MIN_CONFIDENCE) { skip(field, 'low_confidence'); continue; }
 
       await sh.act({ field, answer: resolved.answer });
-      if (resolved.strategy !== 'cache') learnMapping(db, host, field, resolved);
       filledCount += 1;
-      intendedFills.push({ field, answer: resolved.answer });
+      intendedFills.push({ field, answer: resolved.answer, resolved });
       details.push({ label: field.label, action: 'filled', strategy: resolved.strategy });
     }
 
     // Double-check: re-read the form and verify each fill landed correctly.
+    // Only resolutions that VERIFY are learned into the semantic cache — an
+    // unverified fill must not poison future runs.
     const after = (await sh.extract()) || [];
     const afterValue = new Map(after.map((f) => [f.label, f.currentValue]));
     let unverified = 0;
-    for (const { field, answer } of intendedFills) {
-      if (!verifyFill(field, answer, afterValue.get(field.label))) {
+    for (const { field, answer, resolved } of intendedFills) {
+      if (verifyFill(field, answer, afterValue.get(field.label))) {
+        if (resolved.strategy !== 'cache') learnMapping(db, host, field, resolved);
+      } else {
         unverified += 1;
         details.push({ label: field.label, action: 'unverified', reason: 'value_mismatch' });
       }

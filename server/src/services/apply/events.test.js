@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../../migrations.js';
 import { serializeApplication } from '../../routes/applications.js';
 import { seedTasks } from '../applyTaskTemplates.js';
-import { logEvent, recordSubmitted, flagForReview, clearReview } from './events.js';
+import { logEvent, recordSubmitted, flagForReview, clearReview, EVENT_KINDS } from './events.js';
 
 function freshDb() {
   const db = new Database(':memory:');
@@ -87,6 +87,12 @@ test('clearReview resets the flag and logs a note', () => {
   assert.equal(app.needs_review, 0);
   assert.ok(db.prepare("SELECT 1 FROM application_events WHERE application_id = ? AND kind = 'note'").get(id));
   db.close();
+});
+
+test('EVENT_KINDS enumerates the allowed timeline kinds (used to validate POST /events)', () => {
+  for (const k of ['created', 'packet_opened', 'autofill_run', 'submitted', 'review_required', 'note']) {
+    assert.ok(EVENT_KINDS.includes(k), `missing kind: ${k}`);
+  }
 });
 
 test('deleting the application cascades to its events', () => {

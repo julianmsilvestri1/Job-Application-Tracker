@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../../migrations.js';
 import { retrieve } from './indexer.js';
+import { buildCandidateContext, attachedResumeIds } from './orchestrator.js';
 
 function freshDb() {
   const db = new Database(':memory:');
@@ -35,5 +36,28 @@ test('retrieve scopes resume evidence to the attached document ids (Unit 2.1/2.7
     .filter((h) => h.source_type === 'resume_chunk');
   assert.ok(peScoped.length > 0, 'returns the in-scope PE resume chunks');
   assert.ok(peScoped.every((h) => h.source_id === pe), 'unattached analytics variant is excluded');
+  db.close();
+});
+
+test('attachedResumeIds returns an application\'s attached resume document ids', () => {
+  const db = freshDb();
+  const analytics = seedResume(db, 'Python pandas analytics');
+  const appId = db.prepare("INSERT INTO applications (title) VALUES ('A')").run().lastInsertRowid;
+  db.prepare("INSERT INTO application_documents (application_id, document_id, role) VALUES (?, ?, 'resume')").run(appId, analytics);
+  assert.deepEqual(attachedResumeIds(db, appId), [analytics]);
+  assert.equal(attachedResumeIds(db, appId + 999), null, 'no attachments → null (unscoped)');
+  db.close();
+});
+
+test('buildCandidateContext scopes retrieval to the attached resume variant (end-to-end)', async () => {
+  const db = freshDb();
+  const analytics = seedResume(db, 'Python pandas numpy data analytics statistics in R and Stata');
+  seedResume(db, 'leveraged buyout M&A private equity transaction deal sourcing');
+  const ctx = await buildCandidateContext({
+    db, query: 'Python pandas data analysis', useRetrieval: true, resumeDocumentIds: [analytics],
+  });
+  assert.equal(ctx.retrieved, true, 'retrieval was used');
+  assert.match(ctx.text, /python|pandas|analytics/i);
+  assert.ok(!/buyout|private equity/i.test(ctx.text), 'the unattached PE variant is not pulled in');
   db.close();
 });

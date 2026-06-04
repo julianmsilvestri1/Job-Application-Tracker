@@ -87,6 +87,7 @@ test('resolveField does not fill compound labels from a generic alias', () => {
 test('runApply extracts → fills → learns → submits, and reuses the cache on a second run', async () => {
   const db = freshDb();
   const appId = seedApp(db);
+  db.prepare('UPDATE apply_settings SET auto_submit = 1 WHERE id = 1').run(); // opt in to L3 auto-submit
   const fields = [
     { label: 'Full name', type: 'text' },
     { label: 'Email', type: 'text' },
@@ -116,6 +117,32 @@ test('runApply extracts → fills → learns → submits, and reuses the cache o
   assert.equal(r2.filledCount, 2);
   assert.equal(r2.submitted, true);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ats_field_mappings').get().n, 2);
+  db.close();
+});
+
+test('safe default: a complete, verified form is NOT auto-submitted when auto-submit is off', async () => {
+  const db = freshDb(); // apply_settings.auto_submit defaults to 0
+  const appId = seedApp(db);
+  const fields = [{ label: 'Full name', type: 'text' }, { label: 'Email', type: 'text' }];
+  const browser = fakeBrowser(fields);
+  const r = await runApply({ applicationId: appId, url: 'https://boards.greenhouse.io/x', db, stagehandFactory: async () => browser });
+  assert.equal(r.verified, true);
+  assert.equal(r.requiredUnmet, 0);
+  assert.equal(r.submitted, false, 'auto-submit off by default → fills only, human submits');
+  assert.equal(r.reviewReason, null, 'not a problem to flag — policy simply says do not submit');
+  assert.ok(!browser.acts.some((a) => a.submit), 'no submit action issued');
+  db.close();
+});
+
+test('fillExisting policy lets the runner overwrite a pre-filled field', async () => {
+  const db = freshDb();
+  const appId = seedApp(db);
+  db.prepare('UPDATE apply_settings SET fill_existing = 1 WHERE id = 1').run();
+  const fields = [{ label: 'Full name', type: 'text', currentValue: 'stale value' }];
+  const browser = fakeBrowser(fields);
+  const r = await runApply({ applicationId: appId, url: 'https://x.test/a', db, stagehandFactory: async () => browser });
+  assert.equal(r.filledCount, 1, 'a pre-filled field is (re)filled when fillExisting is on');
+  assert.ok(browser.acts.some((a) => a.field && a.field.label === 'Full name'));
   db.close();
 });
 

@@ -1,6 +1,7 @@
 // Application packet (Unit 2.4): the canonical data contract the portal
 // workspace and the Stagehand apply runner both consume. DB access is
 // dependency-injected so it is unit-testable against an in-memory database.
+import { getApplySettings } from './settings.js';
 
 // Categories that must NEVER be auto-filled or fabricated by the resolver.
 export const REDACTED_FIELDS = [
@@ -50,7 +51,7 @@ function humanize(key) {
 }
 
 // Build the candidate.fields list (only fields that have a value).
-function candidateFields(profile) {
+function candidateFields(profile, { includeCustomFields = true } = {}) {
   const fields = [];
 
   // Most ATS forms split the name — derive First/Last from full_name.
@@ -76,14 +77,16 @@ function candidateFields(profile) {
       sensitivity: 'sensitive',
     });
   }
-  for (const [key, value] of Object.entries(profile.custom_fields || {})) {
-    if (!value) continue;
-    fields.push({
-      label: humanize(key),
-      value: String(value),
-      aliases: [key.toLowerCase(), humanize(key).toLowerCase()],
-      sensitivity: 'sensitive',
-    });
+  if (includeCustomFields) {
+    for (const [key, value] of Object.entries(profile.custom_fields || {})) {
+      if (!value) continue;
+      fields.push({
+        label: humanize(key),
+        value: String(value),
+        aliases: [key.toLowerCase(), humanize(key).toLowerCase()],
+        sensitivity: 'sensitive',
+      });
+    }
   }
   return fields;
 }
@@ -137,10 +140,14 @@ export function buildPacket(db, application, { includeResumeText = false } = {})
 
   const resumeDocumentIds = documents.filter((d) => d.role === 'resume').map((d) => d.documentId);
   const variantTags = [...new Set(documents.map((d) => d.variantTag).filter(Boolean))];
+  const settings = getApplySettings(db);
 
   return {
     application: { ...application, remote: Boolean(application.remote) },
-    candidate: { fields: candidateFields(profile), profile, experiences, education, skills: profile.skills },
+    candidate: {
+      fields: candidateFields(profile, { includeCustomFields: settings.includeCustomFields }),
+      profile, experiences, education, skills: profile.skills,
+    },
     documents,
     answers,
     applyPlan: storedApplyPlan(db, application.id),
@@ -148,7 +155,8 @@ export function buildPacket(db, application, { includeResumeText = false } = {})
     retrievalScope: { resumeDocumentIds, variantTags },
     applyPolicy: {
       canAutofill: true,
-      canAutoSubmit: true,
+      canAutoSubmit: settings.autoSubmit,   // opt-in; OFF by default (Unit 2.8)
+      fillExisting: settings.fillExisting,  // OFF by default — never overwrite
       redactedFields: REDACTED_FIELDS,
       requiresCdp: true,
     },

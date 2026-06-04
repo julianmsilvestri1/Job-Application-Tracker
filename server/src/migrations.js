@@ -312,6 +312,23 @@ export const migrations = [
     addColumn(db, 'applications', 'needs_review', 'INTEGER DEFAULT 0');
     addColumn(db, 'applications', 'review_summary', "TEXT DEFAULT ''");
   },
+
+  // --- Migration 14: apply safety settings (Unit 2.8) ----------------------
+  // Single-row policy controlling autonomous behaviour. Safe by default:
+  // auto_submit OFF (assistant fills + verifies, the human submits) and
+  // fill_existing OFF (never overwrite values already on the form).
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS apply_settings (
+        id                    INTEGER PRIMARY KEY CHECK (id = 1),
+        auto_submit           INTEGER DEFAULT 0,
+        fill_existing         INTEGER DEFAULT 0,
+        include_custom_fields INTEGER DEFAULT 1,
+        updated_at            TEXT DEFAULT (datetime('now'))
+      );
+      INSERT OR IGNORE INTO apply_settings (id) VALUES (1);
+    `);
+  },
 ];
 
 export function runMigrations(db) {

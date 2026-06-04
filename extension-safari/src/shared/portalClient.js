@@ -23,6 +23,7 @@ async function req(path, options) {
 
 export const portal = {
   testConnection: () => req('/health'),
+  applyPolicy: () => req('/assistant/apply-policy'),
   listApplications: () => req('/applications'),
   getPacket: (id) => req(`/applications/${id}/packet`),
   triggerApply: (applicationId, url) => req('/extension/trigger-apply', {

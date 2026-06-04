@@ -3,12 +3,14 @@ import Dashboard from './pages/Dashboard.jsx';
 import Search from './pages/Search.jsx';
 import Applications from './pages/Applications.jsx';
 import Profile from './pages/Profile.jsx';
+import Settings from './pages/Settings.jsx';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: '📊' },
   { to: '/search', label: 'Find Jobs', icon: '🔍' },
   { to: '/applications', label: 'Applications', icon: '📋' },
   { to: '/profile', label: 'My Profile', icon: '👤' },
+  { to: '/settings', label: 'Settings', icon: '⚙️' },
 ];
 
 export default function App() {
@@ -33,6 +35,7 @@ export default function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/applications" element={<Applications />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
     </div>

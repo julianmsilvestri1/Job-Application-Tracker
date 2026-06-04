@@ -214,9 +214,10 @@ export async function runApply({ applicationId, url, db = defaultDb, stagehandFa
       if (field.required && reason !== 'prefilled') requiredUnmet += 1;
     };
 
+    const fillExisting = Boolean(packet.applyPolicy.fillExisting);
     for (const field of fields) {
       if (isRedacted(field.label)) { skip(field, 'redacted'); continue; }
-      if (String(field.currentValue ?? '').trim()) { skip(field, 'prefilled'); continue; }
+      if (!fillExisting && String(field.currentValue ?? '').trim()) { skip(field, 'prefilled'); continue; }
 
       const resolved = resolveField(field, { packet, host, db });
       if (!resolved) { skip(field, 'unresolved'); continue; }

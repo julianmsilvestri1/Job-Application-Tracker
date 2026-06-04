@@ -39,10 +39,25 @@ test('packet includes attachments, retrievalScope, sensitivity tags, and applyPo
   assert.ok(p.candidate.fields.find((f) => f.label === 'Email' && f.sensitivity === 'contact'));
   assert.ok(p.candidate.fields.find((f) => f.label === 'Full name' && f.sensitivity === 'public'));
   assert.ok(p.candidate.fields.find((f) => f.sensitivity === 'sensitive'));
-  assert.equal(p.applyPolicy.canAutoSubmit, true);
+  assert.equal(p.applyPolicy.canAutoSubmit, false, 'auto-submit is OFF by default (Unit 2.8)');
+  assert.equal(p.applyPolicy.fillExisting, false, 'fill-existing is OFF by default');
   assert.equal(p.applyPolicy.requiresCdp, true);
   assert.ok(p.applyPolicy.redactedFields.includes('SSN'));
   assert.equal(p.answers[0].question, 'Why us?');
+  db.close();
+});
+
+test('applyPolicy + custom fields reflect apply_settings (opt-in)', () => {
+  const db = freshDb();
+  const app = db.prepare('SELECT * FROM applications WHERE id = ?').get(seedApp(db));
+  // default: custom fields included, auto-submit off
+  assert.ok(buildPacket(db, app).candidate.fields.some((f) => /license/i.test(f.label)));
+
+  db.prepare('UPDATE apply_settings SET auto_submit = 1, fill_existing = 1, include_custom_fields = 0 WHERE id = 1').run();
+  const p = buildPacket(db, app);
+  assert.equal(p.applyPolicy.canAutoSubmit, true, 'enabling auto-submit flows through');
+  assert.equal(p.applyPolicy.fillExisting, true);
+  assert.ok(!p.candidate.fields.some((f) => /license/i.test(f.label)), 'custom fields excluded when toggled off');
   db.close();
 });
 

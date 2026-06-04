@@ -41,10 +41,20 @@ function copy(text) {
   setStatus('Copied', 'ok');
 }
 
+async function showPolicy() {
+  try {
+    const p = await portal.applyPolicy();
+    $('policy').textContent = p.canSubmit
+      ? 'Auto-submit: ON — submits only complete, verified forms.'
+      : 'Auto-submit: OFF — fills only; you review & submit.';
+  } catch { /* policy is advisory in the popup; ignore */ }
+}
+
 async function init() {
   current.tab = await activeTab();
   current.page = await pageInfo(current.tab);
   $('host').textContent = current.page.hostname || '(unknown page)';
+  showPolicy();
   try {
     const apps = await portal.listApplications();
     const sel = $('app');

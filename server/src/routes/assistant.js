@@ -2,11 +2,40 @@ import { Router } from 'express';
 import db from '../db.js';
 import { getProfile } from './profile.js';
 import { coverLetter, answerQuestion, positioning, planQueries, aiEnabled } from '../services/ai/orchestrator.js';
+import { getApplySettings, updateApplySettings } from '../services/apply/settings.js';
+import { REDACTED_FIELDS } from '../services/apply/packet.js';
+
+// Keep in sync with extension-safari/src/manifest.*.json — lets the portal warn
+// when an outdated extension connects.
+const EXTENSION_VERSION = '0.2.0';
 
 const router = Router();
 
 router.get('/status', (req, res) => {
   res.json({ aiEnabled: aiEnabled() });
+});
+
+// Apply safety policy (Unit 2.8). canSubmit is OFF by default — the assistant
+// fills + verifies and the human submits, unless auto-submit is explicitly
+// enabled. Sensitive/EEO labels are never auto-filled.
+function policyResponse() {
+  const s = getApplySettings(db);
+  return {
+    canSubmit: s.autoSubmit,
+    fillExisting: s.fillExisting,
+    includeCustomFields: s.includeCustomFields,
+    sensitiveDenylist: REDACTED_FIELDS,
+    extensionVersion: EXTENSION_VERSION,
+  };
+}
+
+router.get('/apply-policy', (req, res) => {
+  res.json(policyResponse());
+});
+
+router.put('/apply-policy', (req, res) => {
+  updateApplySettings(db, req.body || {});
+  res.json(policyResponse());
 });
 
 // Positioning / branding guidance derived from the profile (Unit 3.3).

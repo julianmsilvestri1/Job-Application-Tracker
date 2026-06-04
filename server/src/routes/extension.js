@@ -2,7 +2,7 @@ import { Router } from 'express';
 import db from '../db.js';
 import { runApply, resolveField, isRedacted } from '../services/apply/stagehandRunner.js';
 import { buildPacket } from '../services/apply/packet.js';
-import { logEvent, recordSubmitted } from '../services/apply/events.js';
+import { logEvent, recordSubmitted, flagForReview } from '../services/apply/events.js';
 import { seedTasks } from '../services/applyTaskTemplates.js';
 
 // Extension bridge (Units 2.4 + 2.7). The extension is a thin Trigger UI; the
@@ -36,20 +36,25 @@ router.post('/trigger-apply', async (req, res) => {
   const { applicationId, url } = req.body || {};
   if (!applicationId || !url) return res.status(400).json({ error: 'applicationId and url are required.' });
   try {
-    const summary = await runApply({ applicationId: Number(applicationId), url: String(url) });
+    const id = Number(applicationId);
+    const summary = await runApply({ applicationId: id, url: String(url) });
     // Audit (no field values — counts/host only).
-    logEvent(db, Number(applicationId), {
+    logEvent(db, id, {
       kind: 'autofill_run',
       source: 'extension',
-      summary: `${summary.hostname}: filled ${summary.filledCount}, skipped ${summary.skippedCount}`,
+      summary: `${summary.hostname}: filled ${summary.filledCount}, skipped ${summary.skippedCount}${summary.submitted ? ', submitted' : ''}`,
       metadata: {
         hostname: summary.hostname, ats: summary.hostname,
         filledCount: summary.filledCount, skippedCount: summary.skippedCount,
-        requiredUnmet: summary.requiredUnmet, submitted: summary.submitted,
+        requiredUnmet: summary.requiredUnmet, unverified: summary.unverified,
+        verified: summary.verified, submitted: summary.submitted,
       },
     });
     if (summary.submitted) {
-      recordSubmitted(db, Number(applicationId), { source: 'extension', summary: 'Auto-submitted via Stagehand', metadata: { hostname: summary.hostname } });
+      recordSubmitted(db, id, { source: 'extension', summary: 'Auto-submitted via Stagehand', metadata: { hostname: summary.hostname } });
+    } else if (summary.reviewReason) {
+      // Couldn't complete/verify — flag for a human instead of submitting.
+      flagForReview(db, id, { source: 'extension', summary: `Auto-apply paused: ${summary.reviewReason}.`, metadata: { hostname: summary.hostname } });
     }
     res.json(summary);
   } catch (err) {

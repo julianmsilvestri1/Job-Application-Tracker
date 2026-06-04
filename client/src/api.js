@@ -83,6 +83,8 @@ export const api = {
     request(`/applications/${applicationId}/events`, { method: 'POST', body: JSON.stringify(b) }),
   markSubmitted: (applicationId) =>
     request(`/applications/${applicationId}/mark-submitted`, { method: 'POST' }),
+  clearReview: (applicationId) =>
+    request(`/applications/${applicationId}/clear-review`, { method: 'POST' }),
 
   // Answers (Q&A)
   getAnswers: (applicationId) => request(`/applications/${applicationId}/answers`),

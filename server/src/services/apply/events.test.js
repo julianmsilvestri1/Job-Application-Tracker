@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../../migrations.js';
 import { serializeApplication } from '../../routes/applications.js';
 import { seedTasks } from '../applyTaskTemplates.js';
-import { logEvent, recordSubmitted } from './events.js';
+import { logEvent, recordSubmitted, flagForReview, clearReview } from './events.js';
 
 function freshDb() {
   const db = new Database(':memory:');
@@ -50,6 +50,42 @@ test('recordSubmitted is atomic: status applied + Submit task done + submitted e
 
   const ev = db.prepare("SELECT * FROM application_events WHERE application_id = ? AND kind = 'submitted'").get(id);
   assert.ok(ev, 'submitted event logged');
+  db.close();
+});
+
+test('flagForReview sets the tracker flag + reason and logs review_required', () => {
+  const db = freshDb();
+  const id = newApp(db);
+  flagForReview(db, id, { summary: 'Auto-apply paused: 1 field(s) did not verify after fill.', source: 'extension' });
+  const app = db.prepare('SELECT * FROM applications WHERE id = ?').get(id);
+  assert.equal(app.needs_review, 1);
+  assert.match(app.review_summary, /did not verify/);
+  const ev = db.prepare("SELECT * FROM application_events WHERE application_id = ? AND kind = 'review_required'").get(id);
+  assert.ok(ev, 'review_required event logged');
+  const out = serializeApplication(db, db.prepare('SELECT * FROM applications WHERE id = ?').get(id));
+  assert.equal(out.needs_review, true, 'serializer exposes a boolean flag');
+  db.close();
+});
+
+test('recordSubmitted clears any review flag', () => {
+  const db = freshDb();
+  const id = newApp(db);
+  flagForReview(db, id, { summary: 'paused' });
+  recordSubmitted(db, id, { source: 'portal' });
+  const app = db.prepare('SELECT * FROM applications WHERE id = ?').get(id);
+  assert.equal(app.needs_review, 0);
+  assert.equal(app.review_summary, '');
+  db.close();
+});
+
+test('clearReview resets the flag and logs a note', () => {
+  const db = freshDb();
+  const id = newApp(db);
+  flagForReview(db, id, { summary: 'paused' });
+  clearReview(db, id, { source: 'portal' });
+  const app = db.prepare('SELECT * FROM applications WHERE id = ?').get(id);
+  assert.equal(app.needs_review, 0);
+  assert.ok(db.prepare("SELECT 1 FROM application_events WHERE application_id = ? AND kind = 'note'").get(id));
   db.close();
 });
 

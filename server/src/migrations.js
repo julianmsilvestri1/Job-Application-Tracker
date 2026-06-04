@@ -303,6 +303,15 @@ export const migrations = [
       CREATE INDEX IF NOT EXISTS idx_app_events_application ON application_events(application_id);
     `);
   },
+
+  // --- Migration 13: human-review flag for auto-apply (Unit 2.7+) ----------
+  // When the autonomous apply runner can't fully complete OR can't verify its
+  // own fills, it leaves the application flagged for human review instead of
+  // submitting a wrong/partial form.
+  (db) => {
+    addColumn(db, 'applications', 'needs_review', 'INTEGER DEFAULT 0');
+    addColumn(db, 'applications', 'review_summary', "TEXT DEFAULT ''");
+  },
 ];
 
 export function runMigrations(db) {

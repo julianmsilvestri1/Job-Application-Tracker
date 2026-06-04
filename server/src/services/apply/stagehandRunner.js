@@ -166,8 +166,29 @@ async function defaultStagehandFactory({ cdpUrl, url }) {
   };
 }
 
-// Full apply pipeline. Returns an audit summary; never returns or logs raw
-// field values. `stagehandFactory` is injected in tests.
+// Strict post-fill verification: confirm a field's read-back value is exactly
+// what we intended (normalized). For selects, the read-back must point to the
+// SAME option (by value or label) we chose. Any doubt → unverified.
+function verifyFill(field, intended, after) {
+  const a = norm(after);
+  if (!a) return false;
+  const want = norm(intended);
+  if (a === want) return true;
+  if (Array.isArray(field.options) && field.options.length) {
+    return field.options.some((o) => {
+      const v = norm(optionValue(o));
+      const l = norm(optionLabel(o));
+      return (want === v || want === l) && (a === v || a === l);
+    });
+  }
+  return false; // strict: text must match exactly (normalized)
+}
+
+// Full apply pipeline. Fills what it can, then re-reads the form and verifies
+// every fill before submitting. Auto-submits ONLY a complete + verified form;
+// otherwise returns a reviewReason so the caller flags it for a human. Returns
+// an audit summary; never returns or logs raw field values. `stagehandFactory`
+// is injected in tests.
 export async function runApply({ applicationId, url, db = defaultDb, stagehandFactory = defaultStagehandFactory }) {
   const application = db.prepare('SELECT * FROM applications WHERE id = ?').get(applicationId);
   if (!application) throw new Error('Application not found');
@@ -179,6 +200,7 @@ export async function runApply({ applicationId, url, db = defaultDb, stagehandFa
   try {
     const fields = (await sh.extract()) || [];
     const details = []; // value-free audit: form labels + action/reason only
+    const intendedFills = []; // { field, answer } for post-fill verification
     let filledCount = 0;
     let skippedCount = 0;
     let requiredUnmet = 0; // required fields left neither filled nor pre-filled
@@ -199,17 +221,34 @@ export async function runApply({ applicationId, url, db = defaultDb, stagehandFa
       await sh.act({ field, answer: resolved.answer });
       if (resolved.strategy !== 'cache') learnMapping(db, host, field, resolved);
       filledCount += 1;
+      intendedFills.push({ field, answer: resolved.answer });
       details.push({ label: field.label, action: 'filled', strategy: resolved.strategy });
     }
 
-    // Only auto-submit a COMPLETE form: every required field filled or already
-    // present. Otherwise fill what we can and leave the rest for the user.
+    // Double-check: re-read the form and verify each fill landed correctly.
+    const after = (await sh.extract()) || [];
+    const afterValue = new Map(after.map((f) => [f.label, f.currentValue]));
+    let unverified = 0;
+    for (const { field, answer } of intendedFills) {
+      if (!verifyFill(field, answer, afterValue.get(field.label))) {
+        unverified += 1;
+        details.push({ label: field.label, action: 'unverified', reason: 'value_mismatch' });
+      }
+    }
+    const verified = unverified === 0;
+
+    // Auto-submit ONLY a complete AND verified form. Otherwise leave it for a
+    // human and tell the caller why (so it can flag the application).
+    let reviewReason = null;
+    if (requiredUnmet > 0) reviewReason = `${requiredUnmet} required field(s) could not be filled`;
+    else if (!verified) reviewReason = `${unverified} field(s) did not verify after fill`;
+
     let submitted = false;
-    if (packet.applyPolicy.canAutoSubmit && filledCount > 0 && requiredUnmet === 0) {
+    if (packet.applyPolicy.canAutoSubmit && filledCount > 0 && requiredUnmet === 0 && verified) {
       await sh.act({ submit: true });
       submitted = true;
     }
-    return { hostname: host, filledCount, skippedCount, requiredUnmet, submitted, details };
+    return { hostname: host, filledCount, skippedCount, requiredUnmet, unverified, verified, submitted, reviewReason, details };
   } finally {
     if (sh && typeof sh.close === 'function') await sh.close();
   }

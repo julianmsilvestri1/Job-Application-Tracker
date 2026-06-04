@@ -16,6 +16,25 @@ function freshDb() {
 }
 const seedApp = (db) => db.prepare("INSERT INTO applications (title) VALUES ('Analyst')").run().lastInsertRowid;
 
+// A realistic injected Stagehand: records act() fills and reflects them as
+// currentValue on the next extract() (so post-fill verification can confirm
+// them). `garble` lets a test simulate a fill that didn't land correctly.
+function fakeBrowser(initialFields, { garble = () => false } = {}) {
+  const values = new Map();
+  const acts = [];
+  return {
+    acts,
+    async extract() {
+      return initialFields.map((f) => (values.has(f.label) ? { ...f, currentValue: values.get(f.label) } : { ...f }));
+    },
+    async act(a) {
+      acts.push(a);
+      if (a.field) values.set(a.field.label, garble(a.field, a.answer) ? `${a.answer}-WRONG` : a.answer);
+    },
+    async close() {},
+  };
+}
+
 test('resolveSelectAnswer matches exact/whole-word and never invents a value', () => {
   assert.equal(resolveSelectAnswer('Yes', ['Yes', 'No']), 'Yes');
   assert.equal(resolveSelectAnswer('US Citizen', ['Citizen', 'Permanent Resident']), 'Citizen');
@@ -74,30 +93,49 @@ test('runApply extracts → fills → learns → submits, and reuses the cache o
     { label: 'Gender', type: 'select', options: ['Male', 'Female', 'Decline'] }, // redacted → skipped
     { label: 'Mystery field', type: 'text' },                                    // no data → skipped
   ];
-  const acts = [];
-  const factory = async () => ({
-    extract: async () => fields,
-    act: async (a) => { acts.push(a); },
-    close: async () => {},
-  });
+  const browser = fakeBrowser(fields);
+  const factory = async () => browser;
   const url = 'https://boards.greenhouse.io/acme/jobs/1';
 
   const r1 = await runApply({ applicationId: appId, url, db, stagehandFactory: factory });
   assert.equal(r1.hostname, 'boards.greenhouse.io');
   assert.equal(r1.filledCount, 2);
   assert.equal(r1.skippedCount, 2);
+  assert.equal(r1.verified, true);
   assert.equal(r1.submitted, true);
-  assert.equal(acts.filter((a) => a.field).length, 2);
-  assert.ok(acts.some((a) => a.submit));
+  assert.equal(browser.acts.filter((a) => a.field).length, 2);
+  assert.ok(browser.acts.some((a) => a.submit));
 
   const learned = db.prepare("SELECT * FROM ats_field_mappings WHERE host = 'boards.greenhouse.io'").all();
   assert.equal(learned.length, 2, 'two fills learned into the semantic cache');
   assert.ok(learned.every((c) => c.strategy === 'packet'));
 
-  // Second run on the same host: resolved via cache, no duplicate rows.
-  const r2 = await runApply({ applicationId: appId, url, db, stagehandFactory: factory });
+  // Second run = a fresh page session (new browser) sharing the same db, so the
+  // semantic cache is reused without duplicate rows.
+  const r2 = await runApply({ applicationId: appId, url, db, stagehandFactory: async () => fakeBrowser(fields) });
   assert.equal(r2.filledCount, 2);
+  assert.equal(r2.submitted, true);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ats_field_mappings').get().n, 2);
+  db.close();
+});
+
+test('runApply does NOT submit when a fill fails post-fill verification — it flags for review', async () => {
+  const db = freshDb();
+  const appId = seedApp(db);
+  const fields = [
+    { label: 'Full name', type: 'text' },
+    { label: 'Email', type: 'text' },
+  ];
+  // Email "lands" with the wrong value (e.g. the site mangled it).
+  const browser = fakeBrowser(fields, { garble: (f) => f.label === 'Email' });
+  const r = await runApply({ applicationId: appId, url: 'https://boards.greenhouse.io/acme/x', db, stagehandFactory: async () => browser });
+
+  assert.equal(r.filledCount, 2, 'both fields were filled');
+  assert.equal(r.verified, false);
+  assert.equal(r.unverified, 1);
+  assert.ok(/did not verify/.test(r.reviewReason), 'review reason explains the verification failure');
+  assert.equal(r.submitted, false, 'an unverified form is never auto-submitted');
+  assert.ok(!browser.acts.some((a) => a.submit), 'submit action is never issued');
   db.close();
 });
 

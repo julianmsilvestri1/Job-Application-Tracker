@@ -4,7 +4,7 @@ import { recordEditIfAny } from '../services/answerMemory.js';
 import { seedTasks, mergeSuggestedTasks } from '../services/applyTaskTemplates.js';
 import { applyPlan as generateApplyPlan } from '../services/ai/orchestrator.js';
 import { buildPacket } from '../services/apply/packet.js';
-import { logEvent, recordSubmitted } from '../services/apply/events.js';
+import { logEvent, recordSubmitted, clearReview } from '../services/apply/events.js';
 
 const router = Router();
 
@@ -70,6 +70,7 @@ export function serializeApplication(database, row) {
   return {
     ...row,
     remote: Boolean(row.remote),
+    needs_review: Boolean(row.needs_review),
     documents: attachedDocuments(database, row.id),
     tasks: childRows(database, 'application_tasks', row.id, 'sort_order, id'),
     answers: childRows(database, 'application_answers', row.id, 'created_at DESC'),
@@ -88,6 +89,7 @@ router.get('/', (req, res) => {
   res.json(rows.map((r) => ({
     ...r,
     remote: Boolean(r.remote),
+    needs_review: Boolean(r.needs_review),
     taskProgress: progress.get(r.id) || { done: 0, total: 0 },
   })));
 });
@@ -435,6 +437,15 @@ router.post('/:id/mark-submitted', (req, res) => {
   const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
   if (!app) return res.status(404).json({ error: 'Application not found' });
   recordSubmitted(db, id, { source: 'portal' });
+  res.json(serializeApplication(db, db.prepare('SELECT * FROM applications WHERE id = ?').get(id)));
+});
+
+// Clear the auto-apply human-review flag after a person has handled it.
+router.post('/:id/clear-review', (req, res) => {
+  const id = Number(req.params.id);
+  const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
+  if (!app) return res.status(404).json({ error: 'Application not found' });
+  clearReview(db, id, { source: 'portal' });
   res.json(serializeApplication(db, db.prepare('SELECT * FROM applications WHERE id = ?').get(id)));
 });
 

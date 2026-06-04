@@ -19,6 +19,7 @@ vi.mock('../api.js', () => ({
     getPacket: vi.fn(),
     triggerApply: vi.fn(),
     markSubmitted: vi.fn(),
+    clearReview: vi.fn(),
   },
 }));
 
@@ -70,4 +71,24 @@ test('"Mark submitted" calls the API', async () => {
   );
   fireEvent.click(await screen.findByText('✅ Mark submitted'));
   await waitFor(() => expect(api.markSubmitted).toHaveBeenCalledWith(1));
+});
+
+test('shows a review banner when flagged and "Clear flag" calls the API', async () => {
+  api.getApplication.mockResolvedValue({
+    id: 1, title: 'Frontend Engineer', company: 'Globex', status: 'saved',
+    notes: '', cover_letter: '', remote: false,
+    needs_review: true, review_summary: 'Auto-apply paused: 1 field(s) did not verify after fill.',
+    documents: [], tasks: [], answers: [], events: [], applyPlan: null,
+  });
+  api.clearReview.mockResolvedValue({});
+  render(
+    <ToastProvider>
+      <BrowserRouter>
+        <ApplicationWorkspace applicationId={1} aiEnabled={false} onBack={() => {}} />
+      </BrowserRouter>
+    </ToastProvider>,
+  );
+  expect(await screen.findByText(/did not verify after fill/)).toBeInTheDocument();
+  fireEvent.click(screen.getByText('Clear flag'));
+  await waitFor(() => expect(api.clearReview).toHaveBeenCalledWith(1));
 });

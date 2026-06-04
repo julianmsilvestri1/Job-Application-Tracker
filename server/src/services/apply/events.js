@@ -2,7 +2,7 @@
 // and the extension bridge log the same way. Metadata is JSON and must never
 // contain external form field values — counts/hostnames only.
 
-const EVENT_KINDS = ['created', 'packet_opened', 'autofill_run', 'task_done', 'submitted', 'note'];
+const EVENT_KINDS = ['created', 'packet_opened', 'autofill_run', 'task_done', 'submitted', 'review_required', 'note'];
 
 export function logEvent(db, applicationId, { kind, source = 'portal', summary = '', metadata = {} } = {}) {
   if (!kind) throw new Error('event kind is required');
@@ -20,12 +20,14 @@ export function logEvent(db, applicationId, { kind, source = 'portal', summary =
 }
 
 // Atomically mark an application submitted: status → applied (stamp applied_at),
-// complete its open "Submit" checklist task(s), and log a `submitted` event.
+// complete its open "Submit" checklist task(s), clear any review flag, and log a
+// `submitted` event.
 export function recordSubmitted(db, applicationId, { source = 'portal', summary = 'Marked as submitted', metadata = {} } = {}) {
   const tx = db.transaction(() => {
     db.prepare(`
       UPDATE applications
-      SET status = 'applied', applied_at = COALESCE(applied_at, @now), updated_at = datetime('now')
+      SET status = 'applied', applied_at = COALESCE(applied_at, @now),
+          needs_review = 0, review_summary = '', updated_at = datetime('now')
       WHERE id = @id
     `).run({ id: applicationId, now: new Date().toISOString() });
     db.prepare(`
@@ -33,6 +35,29 @@ export function recordSubmitted(db, applicationId, { source = 'portal', summary 
       WHERE application_id = ? AND done = 0 AND lower(label) LIKE '%submit%'
     `).run(applicationId);
     logEvent(db, applicationId, { kind: 'submitted', source, summary, metadata });
+  });
+  tx();
+}
+
+// Flag an application for human review (auto-apply could not complete/verify).
+// Sets the tracker flag + reason and logs a `review_required` event.
+export function flagForReview(db, applicationId, { summary = 'Needs human review', source = 'extension', metadata = {} } = {}) {
+  const tx = db.transaction(() => {
+    db.prepare(`
+      UPDATE applications SET needs_review = 1, review_summary = @summary, updated_at = datetime('now')
+      WHERE id = @id
+    `).run({ id: applicationId, summary: String(summary || '') });
+    logEvent(db, applicationId, { kind: 'review_required', source, summary, metadata });
+  });
+  tx();
+}
+
+// Clear a review flag after a human has handled it.
+export function clearReview(db, applicationId, { source = 'portal', summary = 'Review resolved' } = {}) {
+  const tx = db.transaction(() => {
+    db.prepare("UPDATE applications SET needs_review = 0, review_summary = '', updated_at = datetime('now') WHERE id = ?")
+      .run(applicationId);
+    logEvent(db, applicationId, { kind: 'note', source, summary });
   });
   tx();
 }

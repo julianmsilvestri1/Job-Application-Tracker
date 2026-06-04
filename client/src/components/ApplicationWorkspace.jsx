@@ -42,6 +42,17 @@ export default function ApplicationWorkspace({ applicationId, aiEnabled, onBack,
     }
   }, [applicationId, toast, load, onChanged]);
 
+  const clearFlag = useCallback(async () => {
+    try {
+      await api.clearReview(applicationId);
+      toast('Review flag cleared', 'success');
+      load();
+      onChanged?.();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }, [applicationId, toast, load, onChanged]);
+
   if (!app) {
     return (
       <div>
@@ -61,6 +72,13 @@ export default function ApplicationWorkspace({ applicationId, aiEnabled, onBack,
         </div>
         <span className={`badge ${app.status}`}>{app.status}</span>
       </div>
+
+      {app.needs_review && (
+        <div className="banner" style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ flex: 1 }}>⚠ {app.review_summary || 'Auto-apply paused — this application needs human review before submitting.'}</span>
+          <button className="btn small secondary" onClick={clearFlag}>Clear flag</button>
+        </div>
+      )}
 
       <ApplicationDetailsPanel
         application={app}

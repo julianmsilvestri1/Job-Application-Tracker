@@ -2,6 +2,7 @@
 // the selected packet, copies fields/answers, and triggers server-side apply.
 // It never fills the page — submission happens in the backend Stagehand service.
 import { portal } from './shared/portalClient.js';
+import { previewSummary, fieldsToText, answersToText } from './shared/packetView.js';
 
 const api = globalThis.browser ?? globalThis.chrome;
 const $ = (id) => document.getElementById(id);
@@ -28,8 +29,7 @@ async function loadPacket(id) {
   setStatus('Loading packet…');
   try {
     current.packet = await portal.getPacket(id);
-    const p = current.packet;
-    $('preview').textContent = `${p.candidate.fields.length} fields · ${p.documents.length} docs · ${p.answers.length} answers`;
+    $('preview').textContent = previewSummary(current.packet);
     setStatus('');
   } catch (e) {
     setStatus(e.message, 'error');
@@ -68,12 +68,10 @@ async function init() {
 
 $('app').addEventListener('change', (e) => loadPacket(Number(e.target.value)));
 $('copyFields').addEventListener('click', () => {
-  if (!current.packet) return;
-  copy(current.packet.candidate.fields.map((f) => `${f.label}: ${f.value}`).join('\n'));
+  if (current.packet) copy(fieldsToText(current.packet));
 });
 $('copyAnswers').addEventListener('click', () => {
-  if (!current.packet) return;
-  copy(current.packet.answers.map((a) => `Q: ${a.question}\nA: ${a.answer}`).join('\n\n'));
+  if (current.packet) copy(answersToText(current.packet));
 });
 $('apply').addEventListener('click', async () => {
   if (!current.packet) return;

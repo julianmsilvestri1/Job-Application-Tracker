@@ -1,9 +1,29 @@
 import { Router } from 'express';
 import db from '../db.js';
 import { recordEditIfAny } from '../services/answerMemory.js';
-import { seedTasks } from '../services/applyTaskTemplates.js';
+import { seedTasks, mergeSuggestedTasks } from '../services/applyTaskTemplates.js';
+import { applyPlan as generateApplyPlan } from '../services/ai/orchestrator.js';
 
 const router = Router();
+
+function parseJson(s, fallback) {
+  try { const v = JSON.parse(s); return v ?? fallback; } catch { return fallback; }
+}
+
+// Parse the stored apply_plans row's JSON columns into arrays (Unit 2.3).
+function parseApplyPlan(row) {
+  if (!row) return null;
+  return {
+    application_id: row.application_id,
+    source: row.source,
+    requirements: parseJson(row.requirements, []),
+    suggested_tasks: parseJson(row.suggested_tasks, []),
+    likely_questions: parseJson(row.likely_questions, []),
+    warnings: parseJson(row.warnings, []),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
 
 const VALID_STATUS = ['saved', 'applied', 'interviewing', 'offer', 'rejected', 'archived'];
 
@@ -43,7 +63,7 @@ function attachedDocuments(database, applicationId) {
 export function serializeApplication(database, row) {
   if (!row) return null;
   const applyPlan = tableExists(database, 'apply_plans')
-    ? database.prepare('SELECT * FROM apply_plans WHERE application_id = ?').get(row.id) || null
+    ? parseApplyPlan(database.prepare('SELECT * FROM apply_plans WHERE application_id = ?').get(row.id))
     : null;
   return {
     ...row,
@@ -62,17 +82,22 @@ router.get('/', (req, res) => {
   const rows = status
     ? db.prepare('SELECT * FROM applications WHERE status = ? ORDER BY updated_at DESC').all(status)
     : db.prepare('SELECT * FROM applications ORDER BY updated_at DESC').all();
-  res.json(rows.map((r) => ({ ...r, remote: Boolean(r.remote), taskProgress: taskProgressFor(r.id) })));
+  const progress = taskProgressMap();
+  res.json(rows.map((r) => ({
+    ...r,
+    remote: Boolean(r.remote),
+    taskProgress: progress.get(r.id) || { done: 0, total: 0 },
+  })));
 });
 
-// Checklist progress for one application (Unit 2.2). Tolerant of the
-// not-yet-migrated table so it is safe to call before migration 9.
-function taskProgressFor(applicationId) {
-  if (!tableExists(db, 'application_tasks')) return { done: 0, total: 0 };
-  const row = db.prepare(
-    'SELECT COUNT(*) AS total, COALESCE(SUM(done), 0) AS done FROM application_tasks WHERE application_id = ?',
-  ).get(applicationId);
-  return { done: Number(row.done), total: Number(row.total) };
+// Checklist progress for every application in one grouped query (Unit 2.2).
+// Tolerant of the not-yet-migrated table so it is safe to call before migration 9.
+function taskProgressMap() {
+  if (!tableExists(db, 'application_tasks')) return new Map();
+  const rows = db.prepare(
+    'SELECT application_id, COUNT(*) AS total, COALESCE(SUM(done), 0) AS done FROM application_tasks GROUP BY application_id',
+  ).all();
+  return new Map(rows.map((r) => [r.application_id, { done: Number(r.done), total: Number(r.total) }]));
 }
 
 // Counts per status for the dashboard, plus checklist due-soon/overdue rollups.
@@ -325,6 +350,53 @@ router.delete('/:id/tasks/:taskId', (req, res) => {
   db.prepare('DELETE FROM application_tasks WHERE id = ? AND application_id = ?')
     .run(Number(req.params.taskId), Number(req.params.id));
   res.status(204).end();
+});
+
+// --- AI apply plan (Unit 2.3) ---------------------------------------------
+
+// Return the stored plan for an application (or null if none generated yet).
+router.get('/:id/apply-plan', (req, res) => {
+  const row = db.prepare('SELECT * FROM apply_plans WHERE application_id = ?').get(Number(req.params.id));
+  res.json(parseApplyPlan(row));
+});
+
+// Generate (or refresh) the apply plan and store it. With { mergeTasks: true }
+// the suggested tasks are also merged into the checklist (deduped).
+router.post('/:id/apply-plan', async (req, res) => {
+  const id = Number(req.params.id);
+  const application = db.prepare('SELECT * FROM applications WHERE id = ?').get(id);
+  if (!application) return res.status(404).json({ error: 'Application not found' });
+
+  const b = req.body || {};
+  try {
+    const plan = await generateApplyPlan({ application, refresh: Boolean(b.refresh) });
+    db.prepare(`
+      INSERT INTO apply_plans (application_id, source, requirements, suggested_tasks, likely_questions, warnings, updated_at)
+      VALUES (@application_id, @source, @requirements, @suggested_tasks, @likely_questions, @warnings, datetime('now'))
+      ON CONFLICT(application_id) DO UPDATE SET
+        source = excluded.source,
+        requirements = excluded.requirements,
+        suggested_tasks = excluded.suggested_tasks,
+        likely_questions = excluded.likely_questions,
+        warnings = excluded.warnings,
+        updated_at = datetime('now')
+    `).run({
+      application_id: id,
+      source: plan.source || 'template',
+      requirements: JSON.stringify(plan.requirements || []),
+      suggested_tasks: JSON.stringify(plan.suggested_tasks || []),
+      likely_questions: JSON.stringify(plan.likely_questions || []),
+      warnings: JSON.stringify(plan.warnings || []),
+    });
+
+    let mergedTaskCount = 0;
+    if (b.mergeTasks) mergedTaskCount = mergeSuggestedTasks(db, id, plan.suggested_tasks || []);
+
+    const stored = parseApplyPlan(db.prepare('SELECT * FROM apply_plans WHERE application_id = ?').get(id));
+    res.status(201).json({ ...stored, mergedTaskCount, warning: plan.warning });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;

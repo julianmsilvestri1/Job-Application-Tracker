@@ -11,6 +11,7 @@ import {
   heuristicScore,
   heuristicPositioning,
   heuristicQueries,
+  heuristicApplyPlan,
 } from './heuristics.js';
 import { retrieve } from './indexer.js';
 import { embed, cosineSimilarity, available as embeddingsAvailable } from './embeddings.js';
@@ -514,6 +515,82 @@ export async function planQueries({ intent = '', db = defaultDb, refresh = false
       .slice(0, 6);
     if (queries.length === 0) return fallback();
     const result = { queries, rationale: String(out.rationale || '').trim(), source: 'ai' };
+    setCached(key, result);
+    return result;
+  } catch (err) {
+    return { ...fallback(), warning: err.message };
+  }
+}
+
+const APPLY_PLAN_SCHEMA = {
+  type: 'object',
+  properties: {
+    requirements: { type: 'array', items: { type: 'string' } },
+    suggested_tasks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string' },
+          category: {
+            type: 'string',
+            enum: ['apply', 'document', 'form', 'follow_up', 'interview', 'networking', 'custom'],
+          },
+        },
+        required: ['label'],
+      },
+    },
+    likely_questions: { type: 'array', items: { type: 'string' } },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['requirements', 'suggested_tasks', 'likely_questions', 'warnings'],
+};
+
+const TASK_CATEGORIES = ['apply', 'document', 'form', 'follow_up', 'interview', 'networking', 'custom'];
+
+// Read a job posting and produce an actionable apply plan: required materials,
+// suggested checklist tasks, likely screening questions, and risk warnings.
+// Falls back to the deterministic heuristic plan when no API key is set, the
+// model returns nothing, or the call fails — so it always returns a usable plan.
+export async function applyPlan({ application = {}, refresh = false } = {}) {
+  const fallback = () => ({ ...heuristicApplyPlan(application), source: 'template' });
+  if (!aiEnabled()) return fallback();
+
+  const key = cacheKey('applyPlan', [application.title, application.company, application.description]);
+  if (!refresh) {
+    const cached = getCached(key);
+    if (cached) return cached;
+  }
+
+  const system =
+    'You are an application strategist. From a job posting, infer ONLY what the ' +
+    'text supports: required materials, a short actionable checklist, likely ' +
+    'screening questions, and any risk warnings. Never claim the application has ' +
+    'been submitted or completed. For high-stakes roles (finance, PE/IB, real ' +
+    'estate, competitive analytics), prefer networking and narrative-building tasks.';
+  const user =
+    `=== JOB ===\nTitle: ${application.title || ''}\nCompany: ${application.company || ''}\n` +
+    `Location: ${application.location || ''}\n\n${(application.description || '').slice(0, 3000)}`;
+
+  try {
+    const out = await complete({ system, user, maxTokens: 800, jsonSchema: APPLY_PLAN_SCHEMA });
+    if (!out) return fallback();
+    const clean = (arr) => (Array.isArray(arr) ? arr : []).map((s) => String(s || '').trim()).filter(Boolean);
+    const result = {
+      requirements: clean(out.requirements).slice(0, 12),
+      suggested_tasks: (Array.isArray(out.suggested_tasks) ? out.suggested_tasks : [])
+        .filter((t) => t && t.label)
+        .map((t) => ({
+          label: String(t.label).trim(),
+          category: TASK_CATEGORIES.includes(t.category) ? t.category : 'apply',
+        }))
+        .filter((t) => t.label)
+        .slice(0, 12),
+      likely_questions: clean(out.likely_questions).slice(0, 12),
+      warnings: clean(out.warnings).slice(0, 8),
+      source: 'ai',
+    };
+    if (result.suggested_tasks.length === 0 && result.requirements.length === 0) return fallback();
     setCached(key, result);
     return result;
   } catch (err) {

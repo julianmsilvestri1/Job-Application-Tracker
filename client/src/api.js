@@ -67,6 +67,11 @@ export const api = {
   deleteTask: (applicationId, taskId) =>
     request(`/applications/${applicationId}/tasks/${taskId}`, { method: 'DELETE' }),
 
+  // Apply plan (Phase 2.3)
+  getApplyPlan: (applicationId) => request(`/applications/${applicationId}/apply-plan`),
+  generateApplyPlan: (applicationId, b = {}) =>
+    request(`/applications/${applicationId}/apply-plan`, { method: 'POST', body: JSON.stringify(b) }),
+
   // Answers (Q&A)
   getAnswers: (applicationId) => request(`/applications/${applicationId}/answers`),
   saveAnswerForApp: (applicationId, b) =>

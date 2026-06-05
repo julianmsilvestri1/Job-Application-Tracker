@@ -10,6 +10,9 @@
     "start": "node src/index.js",
     "test": "node --test"
   },
+  "engines": {
+    "node": ">=18 <23"
+  },
   "devDependencies": {
     "pdf-lib": "^1.17.1"
   },

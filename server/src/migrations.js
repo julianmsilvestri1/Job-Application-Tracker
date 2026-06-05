@@ -329,6 +329,14 @@ export const migrations = [
       INSERT OR IGNORE INTO apply_settings (id) VALUES (1);
     `);
   },
+
+  // --- Migration 15: drop redundant index (review 4.1) ---------------------
+  // The UNIQUE(host, field_label, field_type, options_hash) index on
+  // ats_field_mappings already serves host-prefix lookups, so idx_ats_host is
+  // redundant write/space overhead. (Cannot edit migration 11 in place.)
+  (db) => {
+    db.exec('DROP INDEX IF EXISTS idx_ats_host;');
+  },
 ];
 
 export function runMigrations(db) {

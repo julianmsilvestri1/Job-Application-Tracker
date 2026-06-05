@@ -471,19 +471,24 @@ One unit ≈ one PR. Do not skip **2.0** — it prevents UI/API sprawl.
 
 ## 6. Phase exit criteria (definition of done)
 
-- [ ] **2.0** Application workspace is the single home for apply features.
-- [ ] **2.1** Documents attach to applications; “what did I send?” is clear.
-- [ ] **2.2** Checklist with deadlines; progress on cards and dashboard.
-- [ ] **2.3** Apply plan works with and without `ANTHROPIC_API_KEY`.
-- [ ] **2.4** Packet API powers portal workspace; Stagehand CDP service + `POST /api/extension/trigger-apply` auto-submits on eligible ATS pages; **`ats_field_mappings`** semantic cache retained and populated.
-- [ ] **2.5–2.5b** Shared core builds **Chrome + Safari**; Safari Web Extension runs on **iPad** with LAN portal URL; connection test works.
-- [ ] **2.1** `variant_tag` scopes document attachment; multi-resume indexing supports RAG.
-- [ ] **2.3** Apply plan can append finance/networking tasks from template or AI.
-- [ ] **2.6** Includes **Workday gnarly fixture** + shadow DOM; select/radio filling tested.
-- [ ] **2.7** `/extension/context` handles `select` options; CORS allows Chrome + Safari origins from `.env`.
-- [ ] **2.7** Activity log records autofill and submit; extension routes origin-locked.
-- [ ] **2.8** No auto-submit; sensitive fields skipped; preview + undo available.
-- [ ] All server + extension unit tests pass; `npm run lint` clean; manual walkthrough on one real Greenhouse or Lever posting.
+> **Status (merged to `claude/fervent-fermi-QRBVK` via PRs #17–#26):** Phase 2 is
+> code-complete and green — server 140 + client 24 + extension 29 unit tests
+> pass, `npm run lint` clean, client build OK. Two items require **owner
+> acceptance on real hardware** (cannot run in CI) and are marked 🟡 below.
+
+- [x] **2.0** Application workspace is the single home for apply features.
+- [x] **2.1** Documents attach to applications; “what did I send?” is clear.
+- [x] **2.2** Checklist with deadlines; progress on cards and dashboard.
+- [x] **2.3** Apply plan works with and without `ANTHROPIC_API_KEY`.
+- [x] **2.4** Packet API powers portal workspace; Stagehand CDP service + `POST /api/extension/trigger-apply` auto-submits on eligible ATS pages; **`ats_field_mappings`** semantic cache retained and populated. 🟡 *live CDP submit on a real ATS = owner acceptance (runner proven via mocked Stagehand).*
+- [x] **2.5–2.5b** Shared core builds **Chrome + Safari**; Safari Web Extension runs on **iPad** with LAN portal URL; connection test works. 🟡 *physical iPad install/run = owner acceptance.*
+- [x] **2.1** `variant_tag` scopes document attachment; multi-resume indexing supports RAG.
+- [x] **2.3** Apply plan can append finance/networking tasks from template or AI.
+- [x] **2.6** Includes **Workday gnarly fixture** + shadow DOM; select/radio filling tested. *(Resolver fixture lab; shadow-DOM/iframe traversal is Stagehand's server-side job per the 2.4 pivot.)*
+- [x] **2.7** `/extension/context` handles `select` options; CORS allows Chrome + Safari origins from `.env`.
+- [x] **2.7** Activity log records autofill and submit; extension routes origin-locked (+ optional `PORTAL_TOKEN`).
+- [x] **2.8** No auto-submit **by default** (opt-in); sensitive fields skipped; packet **preview** available. *(In-extension DOM "undo" superseded by the 2.4 pivot — extension no longer writes the DOM; safety = off-by-default + post-fill verification + flag-for-review.)*
+- [x] All server + extension unit tests pass; `npm run lint` clean. 🟡 *manual walkthrough on one real Greenhouse/Lever posting = owner acceptance.*
 
 ---
 

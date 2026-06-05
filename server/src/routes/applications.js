@@ -29,6 +29,19 @@ function parseApplyPlan(row) {
 
 const VALID_STATUS = ['saved', 'applied', 'interviewing', 'offer', 'rejected', 'archived'];
 
+// Validate :id and confirm the application exists. Returns the id, or sends a
+// 400 (non-positive integer) / 404 (missing) and returns null. Gives consistent
+// status codes across routes instead of silently returning empty lists. Returns
+// the application ROW (so callers don't re-query), or sends 400 (non-integer id)
+// / 404 (missing) and returns null.
+function resolveApp(req, res) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: 'Invalid application id.' }); return null; }
+  const row = db.prepare('SELECT * FROM applications WHERE id = ?').get(id);
+  if (!row) { res.status(404).json({ error: 'Application not found' }); return null; }
+  return row;
+}
+
 // --- Apply-workspace serializer (Unit 2.0) --------------------------------
 // One normalized shape per application, with nested collections that later
 // units fill in. The nested reads are tolerant of not-yet-migrated tables, so
@@ -129,16 +142,16 @@ router.get('/stats', (req, res) => {
 // Single application with nested workspace collections (Unit 2.0).
 // Registered after /stats so the literal route is not captured by :id.
 router.get('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM applications WHERE id = ?').get(Number(req.params.id));
-  if (!row) return res.status(404).json({ error: 'Not found' });
-  res.json(serializeApplication(db, row));
+  const row = resolveApp(req, res);
+  if (!row) return undefined;
+  return res.json(serializeApplication(db, row));
 });
 
 // Application packet — the canonical autofill/auto-apply contract (Unit 2.4).
 // Raw resume text is omitted unless ?includeResumeText=true.
 router.get('/:id/packet', (req, res) => {
-  const row = db.prepare('SELECT * FROM applications WHERE id = ?').get(Number(req.params.id));
-  if (!row) return res.status(404).json({ error: 'Not found' });
+  const row = resolveApp(req, res);
+  if (!row) return undefined;
   const includeResumeText = req.query.includeResumeText === 'true' || req.query.includeResumeText === '1';
   res.json(buildPacket(db, row, { includeResumeText }));
 });
@@ -176,9 +189,9 @@ router.post('/', (req, res) => {
 
 // Update an application (status change, notes, cover letter, etc.).
 router.patch('/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const current = db.prepare('SELECT * FROM applications WHERE id = ?').get(id);
-  if (!current) return res.status(404).json({ error: 'Not found' });
+  const current = resolveApp(req, res);
+  if (!current) return undefined;
+  const id = current.id;
 
   const b = req.body || {};
   const fields = {};
@@ -208,16 +221,19 @@ router.delete('/:id', (req, res) => {
 
 // --- Saved application answers (Q&A) --------------------------------------
 router.get('/:id/answers', (req, res) => {
+  const app = resolveApp(req, res);
+  if (!app) return undefined;
+  const id = app.id;
   const rows = db.prepare(
     'SELECT * FROM application_answers WHERE application_id = ? ORDER BY created_at DESC',
-  ).all(Number(req.params.id));
-  res.json(rows);
+  ).all(id);
+  return res.json(rows);
 });
 
 router.post('/:id/answers', (req, res) => {
-  const id = Number(req.params.id);
-  const app = db.prepare('SELECT id, title, company FROM applications WHERE id = ?').get(id);
-  if (!app) return res.status(404).json({ error: 'Application not found' });
+  const app = resolveApp(req, res);
+  if (!app) return undefined;
+  const id = app.id;
   const b = req.body || {};
   if (!b.question) return res.status(400).json({ error: 'A question is required.' });
   const info = db.prepare(`
@@ -243,16 +259,19 @@ function listAttachedDocuments(applicationId) {
 }
 
 router.get('/:id/documents', (req, res) => {
-  res.json(listAttachedDocuments(Number(req.params.id)));
+  const app = resolveApp(req, res);
+  if (!app) return undefined;
+  const id = app.id;
+  return res.json(listAttachedDocuments(id));
 });
 
 // Attach a document to an application. A document is attached once per
 // application (single role/variant/label), so re-attaching replaces the prior
 // link rather than accumulating duplicate rows.
 router.post('/:id/documents', (req, res) => {
-  const id = Number(req.params.id);
-  const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
-  if (!app) return res.status(404).json({ error: 'Application not found' });
+  const app = resolveApp(req, res);
+  if (!app) return undefined;
+  const id = app.id;
 
   const b = req.body || {};
   const documentId = Number(b.documentId);
@@ -309,15 +328,18 @@ router.delete('/:id/documents/:documentId', (req, res) => {
 const TASK_CATEGORIES = ['apply', 'document', 'form', 'follow_up', 'interview', 'networking', 'custom'];
 
 router.get('/:id/tasks', (req, res) => {
-  res.json(db.prepare(
+  const app = resolveApp(req, res);
+  if (!app) return undefined;
+  const id = app.id;
+  return res.json(db.prepare(
     'SELECT * FROM application_tasks WHERE application_id = ? ORDER BY sort_order, id',
-  ).all(Number(req.params.id)));
+  ).all(id));
 });
 
 router.post('/:id/tasks', (req, res) => {
-  const id = Number(req.params.id);
-  const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
-  if (!app) return res.status(404).json({ error: 'Application not found' });
+  const app = resolveApp(req, res);
+  if (!app) return undefined;
+  const id = app.id;
   const b = req.body || {};
   if (!b.label) return res.status(400).json({ error: 'A task label is required.' });
   const maxOrder = db.prepare(
@@ -369,41 +391,46 @@ router.delete('/:id/tasks/:taskId', (req, res) => {
 
 // Return the stored plan for an application (or null if none generated yet).
 router.get('/:id/apply-plan', (req, res) => {
-  const row = db.prepare('SELECT * FROM apply_plans WHERE application_id = ?').get(Number(req.params.id));
-  res.json(parseApplyPlan(row));
+  const app = resolveApp(req, res);
+  if (!app) return undefined;
+  const id = app.id;
+  const row = db.prepare('SELECT * FROM apply_plans WHERE application_id = ?').get(id);
+  return res.json(parseApplyPlan(row));
 });
 
 // Generate (or refresh) the apply plan and store it. With { mergeTasks: true }
 // the suggested tasks are also merged into the checklist (deduped).
 router.post('/:id/apply-plan', async (req, res) => {
-  const id = Number(req.params.id);
-  const application = db.prepare('SELECT * FROM applications WHERE id = ?').get(id);
-  if (!application) return res.status(404).json({ error: 'Application not found' });
+  const application = resolveApp(req, res);
+  if (!application) return undefined;
+  const id = application.id;
 
   const b = req.body || {};
   try {
     const plan = await generateApplyPlan({ application, refresh: Boolean(b.refresh) });
-    db.prepare(`
-      INSERT INTO apply_plans (application_id, source, requirements, suggested_tasks, likely_questions, warnings, updated_at)
-      VALUES (@application_id, @source, @requirements, @suggested_tasks, @likely_questions, @warnings, datetime('now'))
-      ON CONFLICT(application_id) DO UPDATE SET
-        source = excluded.source,
-        requirements = excluded.requirements,
-        suggested_tasks = excluded.suggested_tasks,
-        likely_questions = excluded.likely_questions,
-        warnings = excluded.warnings,
-        updated_at = datetime('now')
-    `).run({
-      application_id: id,
-      source: plan.source || 'template',
-      requirements: JSON.stringify(plan.requirements || []),
-      suggested_tasks: JSON.stringify(plan.suggested_tasks || []),
-      likely_questions: JSON.stringify(plan.likely_questions || []),
-      warnings: JSON.stringify(plan.warnings || []),
-    });
-
-    let mergedTaskCount = 0;
-    if (b.mergeTasks) mergedTaskCount = mergeSuggestedTasks(db, id, plan.suggested_tasks || []);
+    // Persist the plan and (optionally) merge tasks atomically — never leave a
+    // stored plan without its merged tasks.
+    const mergedTaskCount = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO apply_plans (application_id, source, requirements, suggested_tasks, likely_questions, warnings, updated_at)
+        VALUES (@application_id, @source, @requirements, @suggested_tasks, @likely_questions, @warnings, datetime('now'))
+        ON CONFLICT(application_id) DO UPDATE SET
+          source = excluded.source,
+          requirements = excluded.requirements,
+          suggested_tasks = excluded.suggested_tasks,
+          likely_questions = excluded.likely_questions,
+          warnings = excluded.warnings,
+          updated_at = datetime('now')
+      `).run({
+        application_id: id,
+        source: plan.source || 'template',
+        requirements: JSON.stringify(plan.requirements || []),
+        suggested_tasks: JSON.stringify(plan.suggested_tasks || []),
+        likely_questions: JSON.stringify(plan.likely_questions || []),
+        warnings: JSON.stringify(plan.warnings || []),
+      });
+      return b.mergeTasks ? mergeSuggestedTasks(db, id, plan.suggested_tasks || []) : 0;
+    })();
 
     const stored = parseApplyPlan(db.prepare('SELECT * FROM apply_plans WHERE application_id = ?').get(id));
     res.status(201).json({ ...stored, mergedTaskCount, warning: plan.warning });
@@ -414,40 +441,46 @@ router.post('/:id/apply-plan', async (req, res) => {
 
 // --- Apply session events (Unit 2.7) --------------------------------------
 router.get('/:id/events', (req, res) => {
-  res.json(db.prepare(
+  const app = resolveApp(req, res);
+  if (!app) return undefined;
+  const id = app.id;
+  return res.json(db.prepare(
     'SELECT * FROM application_events WHERE application_id = ? ORDER BY created_at DESC, id DESC',
-  ).all(Number(req.params.id)));
+  ).all(id));
 });
 
 router.post('/:id/events', (req, res) => {
-  const id = Number(req.params.id);
-  const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
-  if (!app) return res.status(404).json({ error: 'Application not found' });
+  const app = resolveApp(req, res);
+  if (!app) return undefined;
+  const id = app.id;
   const b = req.body || {};
   if (!b.kind) return res.status(400).json({ error: 'An event kind is required.' });
   if (!EVENT_KINDS.includes(b.kind)) {
     return res.status(400).json({ error: `Unknown event kind. Allowed: ${EVENT_KINDS.join(', ')}.` });
   }
-  res.status(201).json(logEvent(db, id, {
-    kind: b.kind, source: b.source || 'portal', summary: b.summary, metadata: b.metadata,
+  // Only a plain object of metadata is accepted (no arrays/strings), keeping the
+  // timeline to counts/labels rather than arbitrary blobs.
+  const metadata = (b.metadata && typeof b.metadata === 'object' && !Array.isArray(b.metadata)) ? b.metadata : {};
+  return res.status(201).json(logEvent(db, id, {
+    kind: b.kind, source: b.source || 'portal', summary: b.summary, metadata,
   }));
 });
 
 // Mark an application as submitted (status → applied, complete Submit task, log
 // the event) — atomically.
 router.post('/:id/mark-submitted', (req, res) => {
-  const id = Number(req.params.id);
-  const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
-  if (!app) return res.status(404).json({ error: 'Application not found' });
+  const app = resolveApp(req, res);
+  if (!app) return undefined;
+  const id = app.id;
   recordSubmitted(db, id, { source: 'portal' });
   res.json(serializeApplication(db, db.prepare('SELECT * FROM applications WHERE id = ?').get(id)));
 });
 
 // Clear the auto-apply human-review flag after a person has handled it.
 router.post('/:id/clear-review', (req, res) => {
-  const id = Number(req.params.id);
-  const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
-  if (!app) return res.status(404).json({ error: 'Application not found' });
+  const app = resolveApp(req, res);
+  if (!app) return undefined;
+  const id = app.id;
   clearReview(db, id, { source: 'portal' });
   res.json(serializeApplication(db, db.prepare('SELECT * FROM applications WHERE id = ?').get(id)));
 });

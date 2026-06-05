@@ -44,15 +44,32 @@ test('resolveSelectAnswer matches exact/whole-word and never invents a value', (
   assert.equal(resolveSelectAnswer('No', ['Yes', 'Norway']), null); // never maps "No" → "Norway"
 });
 
+test('resolveSelectAnswer matches symbol-bearing skills as whole tokens (.NET, C++, C#)', () => {
+  assert.equal(resolveSelectAnswer('.NET', ['Java', '.NET Core']), '.NET Core');
+  assert.equal(resolveSelectAnswer('C++', ['Java', 'C++ (advanced)']), 'C++ (advanced)');
+  assert.equal(resolveSelectAnswer('C#', ['Java', 'C# / .NET']), 'C# / .NET');
+  assert.equal(resolveSelectAnswer('No', ['Yes', 'Norway']), null); // no symbol-boundary regression
+});
+
 test('isRedacted catches varied EEO/PII phrasing without false positives', () => {
   assert.ok(isRedacted('Social Security Number'));
   assert.ok(isRedacted('Gender'));
   assert.ok(isRedacted('Are you a protected veteran?'));
   assert.ok(isRedacted('Do you have a disability?'));
   assert.ok(isRedacted('Your age'));
+  assert.ok(isRedacted('Sex'));
+  assert.ok(isRedacted('Marital status'));
+  assert.ok(isRedacted('What is your national origin?'));
+  assert.ok(isRedacted('Citizenship status'));
+  assert.ok(isRedacted('Do you require accommodations due to an impairment?'));
+  assert.ok(isRedacted('Are you disabled?'));
+  assert.ok(isRedacted('Military status'));
   assert.ok(!isRedacted('Full name'));
-  assert.ok(!isRedacted('Message'));      // "age" inside "Message" must not trip
-  assert.ok(!isRedacted('Manager name')); // "Manager" must not match "age"
+  assert.ok(!isRedacted('Message'));        // "age" inside "Message" must not trip
+  assert.ok(!isRedacted('Manager name'));   // "Manager" must not match "age"
+  assert.ok(!isRedacted('Essex County'));   // "sex" inside "Essex" must not trip
+  assert.ok(!isRedacted('React Native developer')); // "native" is not a trigger
+  assert.ok(!isRedacted('Relocation accommodation')); // bare "accommodation" is not a trigger
 });
 
 test('resolveField fills from packet, maps selects, and refuses redacted/unknown fields', () => {
@@ -87,6 +104,7 @@ test('resolveField does not fill compound labels from a generic alias', () => {
 test('runApply extracts → fills → learns → submits, and reuses the cache on a second run', async () => {
   const db = freshDb();
   const appId = seedApp(db);
+  db.prepare('UPDATE apply_settings SET auto_submit = 1 WHERE id = 1').run(); // opt in to L3 auto-submit
   const fields = [
     { label: 'Full name', type: 'text' },
     { label: 'Email', type: 'text' },
@@ -116,6 +134,32 @@ test('runApply extracts → fills → learns → submits, and reuses the cache o
   assert.equal(r2.filledCount, 2);
   assert.equal(r2.submitted, true);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ats_field_mappings').get().n, 2);
+  db.close();
+});
+
+test('safe default: a complete, verified form is NOT auto-submitted when auto-submit is off', async () => {
+  const db = freshDb(); // apply_settings.auto_submit defaults to 0
+  const appId = seedApp(db);
+  const fields = [{ label: 'Full name', type: 'text' }, { label: 'Email', type: 'text' }];
+  const browser = fakeBrowser(fields);
+  const r = await runApply({ applicationId: appId, url: 'https://boards.greenhouse.io/x', db, stagehandFactory: async () => browser });
+  assert.equal(r.verified, true);
+  assert.equal(r.requiredUnmet, 0);
+  assert.equal(r.submitted, false, 'auto-submit off by default → fills only, human submits');
+  assert.equal(r.reviewReason, null, 'not a problem to flag — policy simply says do not submit');
+  assert.ok(!browser.acts.some((a) => a.submit), 'no submit action issued');
+  db.close();
+});
+
+test('fillExisting policy lets the runner overwrite a pre-filled field', async () => {
+  const db = freshDb();
+  const appId = seedApp(db);
+  db.prepare('UPDATE apply_settings SET fill_existing = 1 WHERE id = 1').run();
+  const fields = [{ label: 'Full name', type: 'text', currentValue: 'stale value' }];
+  const browser = fakeBrowser(fields);
+  const r = await runApply({ applicationId: appId, url: 'https://x.test/a', db, stagehandFactory: async () => browser });
+  assert.equal(r.filledCount, 1, 'a pre-filled field is (re)filled when fillExisting is on');
+  assert.ok(browser.acts.some((a) => a.field && a.field.label === 'Full name'));
   db.close();
 });
 
@@ -157,6 +201,48 @@ test('runApply does not auto-submit when a required field is left unmet', async 
   assert.equal(r.submitted, false, 'an incomplete required form is not auto-submitted');
   assert.ok(!acts.some((a) => a.submit), 'submit action is never issued');
   assert.ok(acts.some((a) => a.field && a.field.label === 'Full name'), 'still fills what it can');
+  db.close();
+});
+
+test('runApply flags for review when the verification re-read itself fails', async () => {
+  const db = freshDb();
+  const appId = seedApp(db);
+  db.prepare('UPDATE apply_settings SET auto_submit = 1 WHERE id = 1').run();
+  const fields = [{ label: 'Full name', type: 'text' }];
+  let calls = 0;
+  const browser = {
+    acts: [],
+    async extract() { calls += 1; if (calls === 2) throw new Error('DOM detached'); return fields; },
+    async act(a) { this.acts.push(a); },
+    async close() {},
+  };
+  const r = await runApply({ applicationId: appId, url: 'https://x.test/a', db, stagehandFactory: async () => browser });
+  assert.equal(r.verified, false);
+  assert.equal(r.submitted, false, 'a failed verify read is treated as unverified, never submitted');
+  assert.ok(/did not verify/.test(r.reviewReason));
+  assert.ok(!browser.acts.some((a) => a.submit));
+  db.close();
+});
+
+test('verification matches fields by stable name even if the label changes on re-read', async () => {
+  const db = freshDb();
+  const appId = seedApp(db);
+  db.prepare('UPDATE apply_settings SET auto_submit = 1 WHERE id = 1').run();
+  const values = new Map();
+  let calls = 0;
+  const browser = {
+    acts: [],
+    async extract() {
+      calls += 1;
+      if (calls === 1) return [{ label: 'Full name', name: 'fullName', type: 'text' }];
+      return [{ label: 'Your name', name: 'fullName', type: 'text', currentValue: values.get('fullName') }];
+    },
+    async act(a) { this.acts.push(a); if (a.field) values.set(a.field.name, a.answer); },
+    async close() {},
+  };
+  const r = await runApply({ applicationId: appId, url: 'https://x.test/a', db, stagehandFactory: async () => browser });
+  assert.equal(r.verified, true, 'matched by name despite the label changing on re-read');
+  assert.equal(r.submitted, true);
   db.close();
 });
 

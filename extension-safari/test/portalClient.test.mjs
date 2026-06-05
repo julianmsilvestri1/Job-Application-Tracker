@@ -16,7 +16,7 @@ test('getPacket targets the configured host and parses JSON', async () => {
     return { ok: true, status: 200, json: async () => ({ candidate: { fields: [] }, documents: [], answers: [] }) };
   };
   const p = await portal.getPacket(7);
-  assert.equal(called, 'http://localhost:4000/api/applications/7/packet');
+  assert.equal(called, 'http://localhost:4000/api/extension/packet/7');
   assert.ok(Array.isArray(p.documents));
 });
 
@@ -30,6 +30,14 @@ test('throws the server-provided error message on a non-ok response', async () =
   mockStorage();
   globalThis.fetch = async () => ({ ok: false, status: 404, json: async () => ({ error: 'Not found' }) });
   await assert.rejects(() => portal.getPacket(1), /Not found/);
+});
+
+test('sends X-Portal-Token when a token is configured', async () => {
+  globalThis.chrome = { storage: { sync: { async get() { return { portalUrl: 'http://localhost:4000', portalToken: 'secret123' }; }, async set() {} } } };
+  let sentHeaders = null;
+  globalThis.fetch = async (url, opts) => { sentHeaders = opts.headers; return { ok: true, status: 200, json: async () => ({}) }; };
+  await portal.listApplications();
+  assert.equal(sentHeaders['X-Portal-Token'], 'secret123');
 });
 
 test('requires a portal URL to be configured', async () => {

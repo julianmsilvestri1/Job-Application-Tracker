@@ -4,17 +4,27 @@ import { runApply, resolveField, isRedacted } from '../services/apply/stagehandR
 import { buildPacket } from '../services/apply/packet.js';
 import { logEvent, recordSubmitted, flagForReview } from '../services/apply/events.js';
 import { seedTasks } from '../services/applyTaskTemplates.js';
+import { applyPolicySummary } from '../services/apply/policy.js';
 
 // Extension bridge (Units 2.4 + 2.7). The extension is a thin Trigger UI; the
 // backend owns extraction/resolution/submission. These endpoints are
 // origin-locked to extension origins.
 const router = Router();
 
-// --- CORS: only extension origins may call /api/extension/* (Unit 2.7) -----
-const ALLOWED = (process.env.EXTENSION_ALLOWED_ORIGINS || '')
-  .split(',').map((s) => s.trim()).filter(Boolean);
+// --- CORS + token gate: only extension origins may call /api/extension/*,
+// and (when PORTAL_TOKEN is set) only callers presenting the token (Unit 2.7/2.8).
+// Env is read at request time so it can be configured/tested at runtime.
 const EXT_SCHEME = /^(chrome-extension|safari-web-extension|moz-extension):\/\//;
-const isAllowedOrigin = (origin) => EXT_SCHEME.test(origin) || ALLOWED.includes(origin);
+function isAllowedOrigin(origin) {
+  const list = (process.env.EXTENSION_ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  // With an explicit allowlist, require an EXACT origin match (don't trust the
+  // scheme prefix); otherwise allow any extension origin (dev convenience).
+  return list.length ? list.includes(origin) : EXT_SCHEME.test(origin);
+}
+
+function presentedToken(req) {
+  return req.get('x-portal-token') || (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+}
 
 router.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -23,13 +33,38 @@ router.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Portal-Token, Authorization');
   }
   if (req.method === 'OPTIONS') return res.sendStatus(204);
+  // When a token is configured, every call must present it — this also closes
+  // the no-Origin bypass (curl / native clients) for LAN-exposed deployments.
+  // Read at request time so it can be configured/tested at runtime.
+  const portalToken = process.env.PORTAL_TOKEN || '';
+  if (portalToken && presentedToken(req) !== portalToken) {
+    return res.status(401).json({ error: 'Invalid or missing portal token.' });
+  }
   return next();
 });
 
 const hostOf = (url) => { try { return new URL(url).hostname; } catch { return ''; } };
+
+// --- Reads the extension needs, served from the locked/token-gated bridge so
+// the general /api/* surface can stay same-origin only (Unit 2.8 hardening). ---
+
+// Doubles as the connection test (validates URL + origin + token in one call).
+router.get('/apply-policy', (req, res) => {
+  res.json(applyPolicySummary(db));
+});
+
+router.get('/applications', (req, res) => {
+  res.json(db.prepare('SELECT id, title, company, status FROM applications ORDER BY updated_at DESC').all());
+});
+
+router.get('/packet/:id', (req, res) => {
+  const row = db.prepare('SELECT * FROM applications WHERE id = ?').get(Number(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Application not found' });
+  return res.json(buildPacket(db, row));
+});
 
 // POST /api/extension/trigger-apply  { applicationId, url }
 router.post('/trigger-apply', async (req, res) => {

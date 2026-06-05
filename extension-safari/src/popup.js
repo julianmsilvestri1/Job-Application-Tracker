@@ -41,10 +41,20 @@ function copy(text) {
   setStatus('Copied', 'ok');
 }
 
+async function showPolicy() {
+  try {
+    const p = await portal.applyPolicy();
+    $('policy').textContent = p.canSubmit
+      ? 'Auto-submit: ON — submits only complete, verified forms.'
+      : 'Auto-submit: OFF — fills only; you review & submit.';
+  } catch { /* policy is advisory in the popup; ignore */ }
+}
+
 async function init() {
   current.tab = await activeTab();
   current.page = await pageInfo(current.tab);
   $('host').textContent = current.page.hostname || '(unknown page)';
+  showPolicy();
   try {
     const apps = await portal.listApplications();
     const sel = $('app');
@@ -83,6 +93,15 @@ $('apply').addEventListener('click', async () => {
     setStatus(e.message, 'error');
   }
 });
-$('options').addEventListener('click', () => api.runtime.openOptionsPage());
+$('options').addEventListener('click', () => {
+  // openOptionsPage isn't available on every engine (e.g. Safari on iPad);
+  // fall back to opening the options page in a tab.
+  try {
+    if (api.runtime?.openOptionsPage) api.runtime.openOptionsPage();
+    else api.tabs.create({ url: api.runtime.getURL('options.html') });
+  } catch {
+    api.tabs?.create?.({ url: api.runtime.getURL('options.html') });
+  }
+});
 
 init();

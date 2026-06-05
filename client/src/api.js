@@ -98,6 +98,10 @@ export const api = {
   getPreferences: () => request('/preferences'),
   updatePreferences: (b) => request('/preferences', { method: 'PUT', body: JSON.stringify(b) }),
 
+  // Apply safety policy (Phase 2.8)
+  getApplyPolicy: () => request('/assistant/apply-policy'),
+  updateApplyPolicy: (b) => request('/assistant/apply-policy', { method: 'PUT', body: JSON.stringify(b) }),
+
   // Assistant
   assistantStatus: () => request('/assistant/status'),
   getAutofill: () => request('/assistant/autofill'),

@@ -160,7 +160,7 @@ textarea { resize: vertical; min-height: 80px; }
 .toast.info { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
 .spin { color: var(--muted); }
 .tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
-.tab { padding: 8px 14px; border-radius: 8px; cursor: pointer; color: var(--muted); background: var(--surface); border: 1px solid var(--border); font-size: 13px; }
+.tab { padding: 8px 14px; border-radius: 8px; cursor: pointer; color: var(--muted); background: var(--surface); border: 1px solid var(--border); font-size: 13px; font-family: inherit; }
 .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
 /* --- Phase 3: discovery ------------------------------------------------- */

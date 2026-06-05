@@ -2,11 +2,25 @@ import { Router } from 'express';
 import db from '../db.js';
 import { getProfile } from './profile.js';
 import { coverLetter, answerQuestion, positioning, planQueries, aiEnabled } from '../services/ai/orchestrator.js';
+import { updateApplySettings } from '../services/apply/settings.js';
+import { applyPolicySummary } from '../services/apply/policy.js';
 
 const router = Router();
 
 router.get('/status', (req, res) => {
   res.json({ aiEnabled: aiEnabled() });
+});
+
+// Apply safety policy (Unit 2.8). canSubmit is OFF by default — the assistant
+// fills + verifies and the human submits, unless auto-submit is explicitly
+// enabled. Sensitive/EEO labels are never auto-filled.
+router.get('/apply-policy', (req, res) => {
+  res.json(applyPolicySummary(db));
+});
+
+router.put('/apply-policy', (req, res) => {
+  updateApplySettings(db, req.body || {});
+  res.json(applyPolicySummary(db));
 });
 
 // Positioning / branding guidance derived from the profile (Unit 3.3).

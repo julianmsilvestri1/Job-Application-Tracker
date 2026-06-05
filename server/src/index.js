@@ -19,10 +19,37 @@ import extensionRouter from './routes/extension.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+// The extension bridge owns its own STRICT CORS + token gate. Mount it BEFORE
+// the general CORS so disallowed origins (and their preflight) can never be
+// permitted for /api/extension/*.
+app.use('/api/extension', extensionRouter);
+
+// The portal web app is SAME-ORIGIN (served by this server in prod; Vite proxies
+// in dev), so the general API needs no cross-origin access. Lock it down so
+// arbitrary websites cannot read/mutate /api/* (set WEB_ORIGINS to opt specific
+// front-end origins back in). The extension uses /api/extension/* exclusively.
+const WEB_ORIGINS = (process.env.WEB_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+app.use(cors({ origin: WEB_ORIGINS.length ? WEB_ORIGINS : false }));
+
+// Defense-in-depth CSRF guard: reject state-changing requests that carry a
+// FOREIGN cross-origin header. Same-origin, loopback (dev/Vite proxy), tools
+// without an Origin, and configured WEB_ORIGINS all pass; a real website
+// (evil.com) is blocked.
+const LOOPBACK = /^(localhost|127\.0\.0\.1|\[?::1\]?)$/;
+app.use('/api', (req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  const origin = req.headers.origin;
+  if (!origin) return next();
+  let url;
+  try { url = new URL(origin); } catch { return res.status(403).json({ error: 'Cross-origin request rejected.' }); }
+  const ok = url.host === req.headers.host || LOOPBACK.test(url.hostname) || WEB_ORIGINS.includes(origin);
+  if (!ok) return res.status(403).json({ error: 'Cross-origin request rejected.' });
+  return next();
+});
 
 app.use('/api/profile', profileRouter);
 app.use('/api/documents', documentsRouter);
@@ -31,7 +58,6 @@ app.use('/api/applications', applicationsRouter);
 app.use('/api/answers', answersRouter);
 app.use('/api/assistant', assistantRouter);
 app.use('/api/preferences', preferencesRouter);
-app.use('/api/extension', extensionRouter);
 
 // Serve the built client in production (npm run build && npm start).
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');

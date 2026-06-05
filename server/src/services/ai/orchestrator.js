@@ -74,6 +74,17 @@ function defaultResumeText(db) {
   return row?.extracted_text || '';
 }
 
+// Resume text for the full-context fallback: prefer the application's ATTACHED
+// resume variant (so non-retrieval context isn't the wrong resume), else default.
+function resumeTextFor(db, resumeDocumentIds) {
+  if (Array.isArray(resumeDocumentIds) && resumeDocumentIds.length) {
+    const row = db.prepare("SELECT extracted_text FROM documents WHERE id = ? AND extraction_status = 'done'")
+      .get(resumeDocumentIds[0]);
+    if (row?.extracted_text) return row.extracted_text;
+  }
+  return defaultResumeText(db);
+}
+
 // Pure formatter (unit-testable without a DB).
 export function formatCandidateContext({ profile = {}, experiences = [], education = [], resumeText = '' }) {
   const skills = (Array.isArray(profile.skills) ? profile.skills : []).join(', ');
@@ -136,7 +147,7 @@ export async function buildCandidateContext({
   const profile = loadProfile(db);
   const experiences = db.prepare('SELECT * FROM experiences ORDER BY sort_order, id DESC').all();
   const education = db.prepare('SELECT * FROM education ORDER BY sort_order, id DESC').all();
-  const resumeText = includeResume ? defaultResumeText(db) : '';
+  const resumeText = includeResume ? resumeTextFor(db, resumeDocumentIds) : '';
 
   let text = formatCandidateContext({ profile, experiences, education, resumeText });
   let retrieved = false;

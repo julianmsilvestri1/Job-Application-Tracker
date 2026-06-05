@@ -24,7 +24,9 @@ A tailored, local-first portal for your job hunt:
 
 ## Getting started
 
-Requires **Node.js 18+** (tested on 22).
+Use a **Node.js 18–22 LTS** (20 or 22 recommended; CI runs 20 & 22). `better-sqlite3`
+ships prebuilt binaries for these; on Node 23/24 there are no prebuilds yet, so a
+clean install would try to compile from source (needs Python + a C/C++ toolchain).
 
 ```bash
 # 1. Install everything (root tooling + server + client)

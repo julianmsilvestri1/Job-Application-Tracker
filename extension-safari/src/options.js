@@ -8,10 +8,15 @@ const $ = (id) => document.getElementById(id);
 async function load() {
   const s = await getSettings();
   $('portalUrl').value = s.portalUrl || '';
+  $('portalToken').value = s.portalToken || '';
+}
+
+function persist() {
+  return setSettings({ portalUrl: $('portalUrl').value.trim(), portalToken: $('portalToken').value.trim() });
 }
 
 $('save').addEventListener('click', async () => {
-  await setSettings({ portalUrl: $('portalUrl').value.trim() });
+  await persist();
   $('status').textContent = 'Saved.';
 });
 
@@ -19,7 +24,7 @@ $('test').addEventListener('click', async () => {
   const url = $('portalUrl').value.trim();
   $('status').textContent = 'Testing…';
   try {
-    await setSettings({ portalUrl: url });
+    await persist();
     await portal.testConnection();
     $('status').textContent = 'Connected ✓';
   } catch (e) {

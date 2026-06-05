@@ -49,6 +49,17 @@ test('attachedResumeIds returns an application\'s attached resume document ids',
   db.close();
 });
 
+test('buildCandidateContext full-context fallback uses the ATTACHED resume, not the default', async () => {
+  const db = freshDb();
+  seedResume(db, 'Python pandas analytics R'); // not attached
+  const pe = seedResume(db, 'leveraged buyout private equity transactions');
+  // retrieval OFF → exercises the resumeText fallback path
+  const ctx = await buildCandidateContext({ db, useRetrieval: false, resumeDocumentIds: [pe] });
+  assert.match(ctx.resumeText, /private equity|buyout/i);
+  assert.ok(!/pandas|analytics/i.test(ctx.resumeText), 'the non-attached resume is not used');
+  db.close();
+});
+
 test('buildCandidateContext scopes retrieval to the attached resume variant (end-to-end)', async () => {
   const db = freshDb();
   const analytics = seedResume(db, 'Python pandas numpy data analytics statistics in R and Stata');

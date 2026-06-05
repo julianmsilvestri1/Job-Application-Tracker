@@ -77,6 +77,21 @@ local dev.
 > `/api/extension/*` to the specific macOS + iPad extension IDs via
 > `EXTENSION_ALLOWED_ORIGINS` is the Unit 2.7/2.8 hardening step.
 
+## Security & compatibility notes
+
+- **Portal token (recommended for LAN use):** set `PORTAL_TOKEN` in `server/.env`
+  and paste the same value into the extension **Options → Portal token**. When
+  set, every `/api/extension/*` call must present it (header `X-Portal-Token`),
+  which also blocks origin-less callers. The portal's other `/api/*` routes
+  remain same-origin-trust — keep the portal on a trusted LAN or front it with an
+  authenticating reverse proxy; full portal auth is beyond Phase 2.
+- **Safari requires the MV3 background service worker (Safari 16.4+ / iPadOS
+  16.4+).** Older Safari won't run `background.service_worker`, which the
+  content-script inline review depends on.
+- **Broad `host_permissions`** (`http://*/*`, `https://*/*`) are used so the
+  portal URL can be any LAN address; tighten to your portal origin before any
+  store distribution.
+
 ## Layout
 
 ```text

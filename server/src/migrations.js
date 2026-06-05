@@ -199,6 +199,27 @@ export const migrations = [
     `);
     addColumn(db, 'application_answers', 'edited', 'INTEGER DEFAULT 0');
   },
+
+  // --- Migration 8: link documents to applications (Unit 2.1) --------------
+  // Records exactly which resume / cover letter / portfolio variant belongs to
+  // each application, so "what did I send?" is answerable and RAG can scope to
+  // the attached narrative.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS application_documents (
+        application_id INTEGER NOT NULL,
+        document_id    INTEGER NOT NULL,
+        role           TEXT DEFAULT 'resume',   -- resume | cover_letter | portfolio | references | transcript | other
+        variant_tag    TEXT DEFAULT '',         -- e.g. quant | underwriting | pe | ib | european-format
+        label          TEXT DEFAULT '',         -- human label, e.g. "Resume — analytics (Python/R/Stata)"
+        attached_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (application_id, document_id, role),
+        FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE,
+        FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_app_docs_document ON application_documents(document_id);
+    `);
+  },
 ];
 
 export function runMigrations(db) {

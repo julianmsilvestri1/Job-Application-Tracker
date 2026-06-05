@@ -49,6 +49,15 @@ export const api = {
   updateApplication: (id, b) => request(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify(b) }),
   deleteApplication: (id) => request(`/applications/${id}`, { method: 'DELETE' }),
 
+  // Linked documents (Phase 2.1)
+  getApplicationDocuments: (applicationId) => request(`/applications/${applicationId}/documents`),
+  attachDocument: (applicationId, b) =>
+    request(`/applications/${applicationId}/documents`, { method: 'POST', body: JSON.stringify(b) }),
+  updateApplicationDocument: (applicationId, documentId, b) =>
+    request(`/applications/${applicationId}/documents/${documentId}`, { method: 'PATCH', body: JSON.stringify(b) }),
+  detachDocument: (applicationId, documentId) =>
+    request(`/applications/${applicationId}/documents/${documentId}`, { method: 'DELETE' }),
+
   // Answers (Q&A)
   getAnswers: (applicationId) => request(`/applications/${applicationId}/answers`),
   saveAnswerForApp: (applicationId, b) =>

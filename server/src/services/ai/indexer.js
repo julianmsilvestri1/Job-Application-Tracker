@@ -51,12 +51,16 @@ export function desiredItems(db = defaultDb) {
     items.push({ source_type: 'answer', source_id: a.id, text: `Q: ${a.question}\nA: ${a.answer}`, weight });
   }
 
-  const resume = db.prepare(`
+  // Index EVERY resume document (not only the default), keyed by document id,
+  // so an attached non-default variant (e.g. analytics vs PE) is retrievable
+  // and 2.7 can scope retrieval to a specific application's attached docs.
+  const resumes = db.prepare(`
     SELECT id, extracted_text FROM documents
-    WHERE type = 'resume' AND is_default = 1 AND extraction_status = 'done'
-    ORDER BY created_at DESC LIMIT 1
-  `).get();
-  if (resume?.extracted_text) {
+    WHERE type = 'resume' AND extraction_status = 'done'
+      AND extracted_text IS NOT NULL AND extracted_text != ''
+    ORDER BY created_at DESC
+  `).all();
+  for (const resume of resumes) {
     for (const c of chunk(resume.extracted_text)) {
       if (c.trim()) items.push({ source_type: 'resume_chunk', source_id: resume.id, text: c, weight: 1 });
     }

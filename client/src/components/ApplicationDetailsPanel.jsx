@@ -1,3 +1,5 @@
+import ApplicationDocuments from './ApplicationDocuments.jsx';
+
 // The fixed-section layout for one application's workspace (Unit 2.0).
 // Sections are always present; later units fill their bodies:
 //   Overview (now) · Documents (2.1) · Checklist (2.2) · Apply plan (2.3) ·
@@ -16,7 +18,7 @@ function Section({ title, count, children }) {
 }
 
 export default function ApplicationDetailsPanel({
-  application: app, aiEnabled, onChangeStatus, onSaveNotes, onOpenAssistant,
+  application: app, aiEnabled, onChangeStatus, onSaveNotes, onOpenAssistant, onReload,
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
@@ -54,13 +56,11 @@ export default function ApplicationDetailsPanel({
       </Section>
 
       <Section title="Documents" count={app.documents.length}>
-        {app.documents.length === 0 ? (
-          <div className="empty">No documents linked to this application yet.</div>
-        ) : (
-          <ul>{app.documents.map((d) => (
-            <li key={`${d.document_id}-${d.role}`}>{d.label || d.role}</li>
-          ))}</ul>
-        )}
+        <ApplicationDocuments
+          applicationId={app.id}
+          attached={app.documents}
+          onChanged={onReload}
+        />
       </Section>
 
       <Section title="Checklist" count={app.tasks.length}>

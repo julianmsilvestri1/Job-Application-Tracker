@@ -38,6 +38,38 @@ test('POST /api/extension/trigger-apply requires applicationId and url', async (
   });
 });
 
+test('PORTAL_TOKEN gates the extension API (closes the no-Origin bypass)', async () => {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/extension', extensionRouter);
+  process.env.PORTAL_TOKEN = 'secret123';
+
+  await new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      const base = `http://127.0.0.1:${server.address().port}`;
+      const post = (headers) => fetch(`${base}/api/extension/trigger-apply`, {
+        method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify({}),
+      });
+      try {
+        // No token (and no Origin) → 401, not a bypass.
+        assert.equal((await post({})).status, 401);
+        // Wrong token → 401.
+        assert.equal((await post({ 'x-portal-token': 'nope' })).status, 401);
+        // Correct token → passes the gate (then 400 for the empty body).
+        assert.equal((await post({ 'x-portal-token': 'secret123' })).status, 400);
+        // Authorization: Bearer form also accepted.
+        assert.equal((await post({ authorization: 'Bearer secret123' })).status, 400);
+        resolve();
+      } catch (e) {
+        reject(e);
+      } finally {
+        delete process.env.PORTAL_TOKEN;
+        server.close();
+      }
+    });
+  });
+});
+
 test('the extension API is origin-locked: web origins are rejected, extension origins allowed', async () => {
   const app = express();
   app.use(express.json());

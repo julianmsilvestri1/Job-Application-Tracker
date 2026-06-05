@@ -10,11 +10,16 @@ import { seedTasks } from '../services/applyTaskTemplates.js';
 // origin-locked to extension origins.
 const router = Router();
 
-// --- CORS: only extension origins may call /api/extension/* (Unit 2.7) -----
+// --- CORS + token gate: only extension origins may call /api/extension/*,
+// and (when PORTAL_TOKEN is set) only callers presenting the token (Unit 2.7/2.8).
 const ALLOWED = (process.env.EXTENSION_ALLOWED_ORIGINS || '')
   .split(',').map((s) => s.trim()).filter(Boolean);
 const EXT_SCHEME = /^(chrome-extension|safari-web-extension|moz-extension):\/\//;
 const isAllowedOrigin = (origin) => EXT_SCHEME.test(origin) || ALLOWED.includes(origin);
+
+function presentedToken(req) {
+  return req.get('x-portal-token') || (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+}
 
 router.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -23,9 +28,16 @@ router.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Portal-Token, Authorization');
   }
   if (req.method === 'OPTIONS') return res.sendStatus(204);
+  // When a token is configured, every call must present it — this also closes
+  // the no-Origin bypass (curl / native clients) for LAN-exposed deployments.
+  // Read at request time so it can be configured/tested at runtime.
+  const portalToken = process.env.PORTAL_TOKEN || '';
+  if (portalToken && presentedToken(req) !== portalToken) {
+    return res.status(401).json({ error: 'Invalid or missing portal token.' });
+  }
   return next();
 });
 

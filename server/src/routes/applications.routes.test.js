@@ -81,3 +81,29 @@ test('GET /api/applications/:id returns 404 then the normalized workspace shape'
     });
   });
 });
+
+// Child routes validate :id consistently (real router; resolveAppId runs before
+// any DB work for the non-integer case).
+test('child routes reject a non-integer application id with 400', async () => {
+  const { default: applicationsRouter } = await import('./applications.js');
+  const app = express();
+  app.use(express.json());
+  app.use('/api/applications', applicationsRouter);
+
+  await new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      const base = `http://127.0.0.1:${server.address().port}`;
+      try {
+        for (const path of ['events', 'tasks', 'answers', 'documents', 'apply-plan']) {
+          const res = await fetch(`${base}/api/applications/not-a-number/${path}`);
+          assert.equal(res.status, 400, `${path} → 400 for non-integer id`);
+        }
+        resolve();
+      } catch (e) {
+        reject(e);
+      } finally {
+        server.close();
+      }
+    });
+  });
+});

@@ -4,15 +4,13 @@
 // never scrapes or fills the page DOM (that is Stagehand's job, Unit 2.4).
 import { getSettings } from './storage.js';
 
-async function baseUrl() {
-  const { portalUrl } = await getSettings();
-  return String(portalUrl || '').replace(/\/+$/, '');
-}
-
-async function req(path, options) {
-  const base = await baseUrl();
+async function req(path, options = {}) {
+  const { portalUrl, portalToken } = await getSettings();
+  const base = String(portalUrl || '').replace(/\/+$/, '');
   if (!base) throw new Error('Set your portal URL in the extension options.');
-  const res = await fetch(`${base}/api${path}`, options);
+  const headers = { ...(options.headers || {}) };
+  if (portalToken) headers['X-Portal-Token'] = portalToken; // required by /api/extension when configured
+  const res = await fetch(`${base}/api${path}`, { ...options, headers });
   if (!res.ok) {
     let msg = `Request failed (${res.status})`;
     try { const d = await res.json(); if (d?.error) msg = d.error; } catch { /* non-JSON body */ }

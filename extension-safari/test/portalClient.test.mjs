@@ -32,6 +32,14 @@ test('throws the server-provided error message on a non-ok response', async () =
   await assert.rejects(() => portal.getPacket(1), /Not found/);
 });
 
+test('sends X-Portal-Token when a token is configured', async () => {
+  globalThis.chrome = { storage: { sync: { async get() { return { portalUrl: 'http://localhost:4000', portalToken: 'secret123' }; }, async set() {} } } };
+  let sentHeaders = null;
+  globalThis.fetch = async (url, opts) => { sentHeaders = opts.headers; return { ok: true, status: 200, json: async () => ({}) }; };
+  await portal.listApplications();
+  assert.equal(sentHeaders['X-Portal-Token'], 'secret123');
+});
+
 test('requires a portal URL to be configured', async () => {
   globalThis.chrome = { storage: { sync: { async get() { return { portalUrl: '' }; }, async set() {} } } };
   await assert.rejects(() => portal.listApplications(), /portal URL/);

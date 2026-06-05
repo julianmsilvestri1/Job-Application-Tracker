@@ -19,10 +19,16 @@ import extensionRouter from './routes/extension.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+// The extension bridge owns its own STRICT CORS + token gate. Mount it BEFORE
+// the permissive global cors() so disallowed origins (and their preflight)
+// can never be permitted for /api/extension/*.
+app.use('/api/extension', extensionRouter);
+
+app.use(cors());
 
 app.use('/api/profile', profileRouter);
 app.use('/api/documents', documentsRouter);
@@ -31,7 +37,6 @@ app.use('/api/applications', applicationsRouter);
 app.use('/api/answers', answersRouter);
 app.use('/api/assistant', assistantRouter);
 app.use('/api/preferences', preferencesRouter);
-app.use('/api/extension', extensionRouter);
 
 // Serve the built client in production (npm run build && npm start).
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');

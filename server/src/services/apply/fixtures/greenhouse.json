@@ -1,0 +1,9 @@
+[
+  { "label": "First Name", "type": "text", "required": true },
+  { "label": "Last Name", "type": "text", "required": true },
+  { "label": "Email", "type": "email", "required": true },
+  { "label": "Phone", "type": "tel" },
+  { "label": "LinkedIn Profile", "type": "url" },
+  { "label": "Gender", "type": "select", "options": ["Decline to self-identify", "Male", "Female"] },
+  { "label": "Race / Ethnicity", "type": "select", "options": ["Decline", "Asian", "White", "Two or more races"] }
+]

@@ -12,12 +12,22 @@ import { buildPacket, REDACTED_MATCH } from './packet.js';
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex').slice(0, 16);
 const norm = (s) => String(s || '').toLowerCase().trim();
 
+// Minimum resolver confidence required to auto-fill a field (others are skipped
+// for the user to handle). packet=0.9, answer=0.75, cache=as-learned.
+const MIN_CONFIDENCE = 0.6;
+
 function hostOf(url) {
   try { return new URL(url).hostname; } catch { return String(url || '').slice(0, 120); }
 }
 
+// Options may be plain strings or { value, label } objects (as a real ATS
+// <select>/combobox exposes). Fill by VALUE; match against value or label.
+const optionValue = (o) => (typeof o === 'string' ? o : (o?.value ?? o?.label ?? ''));
+const optionLabel = (o) => (typeof o === 'string' ? o : (o?.label ?? o?.value ?? ''));
+
 function optionsHash(options) {
-  return Array.isArray(options) && options.length ? sha(options.map(norm).join('|')) : '';
+  if (!Array.isArray(options) || options.length === 0) return '';
+  return sha(options.map((o) => `${norm(optionLabel(o))}=${norm(optionValue(o))}`).join('|'));
 }
 
 // A field whose label touches a redacted/EEO category must never be fabricated.
@@ -27,29 +37,24 @@ export function isRedacted(label) {
   return REDACTED_MATCH.some((r) => new RegExp(`\\b${escapeRegex(r)}\\b`).test(l));
 }
 
-// Pick the closest allowed <option> for a free value — never invents a value.
-// Exact match wins; otherwise require a WHOLE-WORD overlap so short values like
-// "No" don't get mapped to "Norway".
+// Pick the allowed option for a free value and return its VALUE — never invents
+// one. Exact (value or label) wins; otherwise require a WHOLE-WORD overlap so
+// short values like "No" don't get mapped to "Norway".
 export function resolveSelectAnswer(value, options) {
   if (!Array.isArray(options) || options.length === 0) return value || null;
   const v = norm(value);
   if (!v) return null;
-  const exact = options.find((o) => norm(o) === v);
-  if (exact) return exact;
-  const word = (hay, needle) => new RegExp(`\\b${escapeRegex(needle)}\\b`).test(hay);
-  const inOption = options.find((o) => word(norm(o), v));        // "Citizen" → "U.S. Citizen"
-  if (inOption) return inOption;
-  const optInValue = options.find((o) => norm(o) && word(v, norm(o)));
-  return optInValue || null;
-}
+  const matchesExact = (o) => norm(optionLabel(o)) === v || norm(optionValue(o)) === v;
+  const exact = options.find(matchesExact);
+  if (exact) return optionValue(exact);
 
-function jaccard(a, b) {
-  const sa = new Set(norm(a).split(/\W+/).filter(Boolean));
-  const sb = new Set(norm(b).split(/\W+/).filter(Boolean));
-  if (sa.size === 0 || sb.size === 0) return 0;
-  let inter = 0;
-  for (const t of sa) if (sb.has(t)) inter += 1;
-  return inter / (sa.size + sb.size - inter);
+  const word = (hay, needle) => new RegExp(`\\b${escapeRegex(needle)}\\b`).test(hay);
+  // value as a whole word inside an option label/value ("Citizen" → "U.S. Citizen")
+  const inOption = options.find((o) => word(norm(optionLabel(o)), v) || word(norm(optionValue(o)), v));
+  if (inOption) return optionValue(inOption);
+  // an option label as a whole word inside the value
+  const optInValue = options.find((o) => { const ol = norm(optionLabel(o)); return ol && word(v, ol); });
+  return optInValue ? optionValue(optInValue) : null;
 }
 
 function cacheLookup(db, host, field) {
@@ -86,11 +91,14 @@ function packetLookup(field, packet) {
 
 function answerLookup(field, packet) {
   const target = norm(field.label);
+  if (target.length < 4) return null; // too generic to match a saved Q&A safely
   for (const a of packet.answers || []) {
     if (!a.answer) continue;
     const q = norm(a.question);
-    if (q.includes(target) || target.includes(q) || jaccard(q, target) >= 0.6) {
-      return { answer: a.answer, strategy: 'answer', vault_key: 'answer', confidence: 0.7 };
+    // Require containment (not fuzzy overlap): autonomous fill should not place
+    // a stored answer into a loosely-matched field.
+    if (q.includes(target) || target.includes(q)) {
+      return { answer: a.answer, strategy: 'answer', vault_key: 'answer', confidence: 0.75 };
     }
   }
   return null;
@@ -170,22 +178,38 @@ export async function runApply({ applicationId, url, db = defaultDb, stagehandFa
 
   try {
     const fields = (await sh.extract()) || [];
+    const details = []; // value-free audit: form labels + action/reason only
     let filledCount = 0;
     let skippedCount = 0;
+    let requiredUnmet = 0; // required fields left neither filled nor pre-filled
+    const skip = (field, reason) => {
+      skippedCount += 1;
+      details.push({ label: field.label, action: 'skipped', reason });
+      if (field.required && reason !== 'prefilled') requiredUnmet += 1;
+    };
+
     for (const field of fields) {
+      if (isRedacted(field.label)) { skip(field, 'redacted'); continue; }
+      if (String(field.currentValue ?? '').trim()) { skip(field, 'prefilled'); continue; }
+
       const resolved = resolveField(field, { packet, host, db });
-      if (!resolved) { skippedCount += 1; continue; }
+      if (!resolved) { skip(field, 'unresolved'); continue; }
+      if ((resolved.confidence || 0) < MIN_CONFIDENCE) { skip(field, 'low_confidence'); continue; }
+
       await sh.act({ field, answer: resolved.answer });
       if (resolved.strategy !== 'cache') learnMapping(db, host, field, resolved);
       filledCount += 1;
+      details.push({ label: field.label, action: 'filled', strategy: resolved.strategy });
     }
 
+    // Only auto-submit a COMPLETE form: every required field filled or already
+    // present. Otherwise fill what we can and leave the rest for the user.
     let submitted = false;
-    if (packet.applyPolicy.canAutoSubmit && filledCount > 0) {
+    if (packet.applyPolicy.canAutoSubmit && filledCount > 0 && requiredUnmet === 0) {
       await sh.act({ submit: true });
       submitted = true;
     }
-    return { hostname: host, filledCount, skippedCount, submitted };
+    return { hostname: host, filledCount, skippedCount, requiredUnmet, submitted, details };
   } finally {
     if (sh && typeof sh.close === 'function') await sh.close();
   }

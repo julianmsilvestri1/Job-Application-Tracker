@@ -1,0 +1,5 @@
+[
+  { "label": "Name", "type": "text" },
+  { "label": "Email", "type": "email" },
+  { "label": "Why do you want to work here?", "type": "textarea" }
+]

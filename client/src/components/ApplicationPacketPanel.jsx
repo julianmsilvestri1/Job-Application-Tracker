@@ -7,6 +7,18 @@ import { useToast } from './Toaster.jsx';
 // backend Stagehand auto-apply for the posting URL.
 const SENSITIVITY_LABEL = { public: 'Public', contact: 'Contact', sensitive: 'Sensitive' };
 
+// Friendly, value-free summary of why fields were skipped during an auto-apply.
+const SKIP_LABEL = {
+  redacted: 'sensitive/EEO', prefilled: 'already filled',
+  unresolved: 'no matching data', low_confidence: 'low confidence',
+};
+function summarizeSkips(details) {
+  const counts = {};
+  for (const d of details) if (d.action === 'skipped') counts[d.reason] = (counts[d.reason] || 0) + 1;
+  const parts = Object.entries(counts).map(([reason, n]) => `${n} ${SKIP_LABEL[reason] || reason}`);
+  return parts.length ? `Skipped: ${parts.join(', ')}.` : '';
+}
+
 export default function ApplicationPacketPanel({ applicationId, application }) {
   const [packet, setPacket] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -94,7 +106,11 @@ export default function ApplicationPacketPanel({ applicationId, application }) {
       {run && (
         <p className="muted" style={{ marginTop: 8 }}>
           {run.hostname}: filled {run.filledCount}, skipped {run.skippedCount}{run.submitted ? ', submitted ✓' : ''}.
+          {!run.submitted && run.requiredUnmet > 0 && ` ${run.requiredUnmet} required field(s) need you — review and submit manually.`}
         </p>
+      )}
+      {run?.details?.length > 0 && summarizeSkips(run.details) && (
+        <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>{summarizeSkips(run.details)}</p>
       )}
 
       <p className="muted" style={{ marginTop: 8, fontSize: 12 }}>

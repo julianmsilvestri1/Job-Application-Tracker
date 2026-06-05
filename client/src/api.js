@@ -43,6 +43,7 @@ export const api = {
 
   // Applications
   getApplications: (status) => request(`/applications${status ? `?status=${status}` : ''}`),
+  getApplication: (id) => request(`/applications/${id}`),
   getStats: () => request('/applications/stats'),
   saveApplication: (b) => request('/applications', { method: 'POST', body: JSON.stringify(b) }),
   updateApplication: (id, b) => request(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify(b) }),

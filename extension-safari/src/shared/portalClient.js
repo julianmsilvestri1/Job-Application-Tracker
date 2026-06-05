@@ -19,11 +19,13 @@ async function req(path, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+// Everything goes through the locked, token-gated /api/extension/* bridge — the
+// extension never touches the same-origin-only general API.
 export const portal = {
-  testConnection: () => req('/health'),
-  applyPolicy: () => req('/assistant/apply-policy'),
-  listApplications: () => req('/applications'),
-  getPacket: (id) => req(`/applications/${id}/packet`),
+  testConnection: () => req('/extension/apply-policy'),
+  applyPolicy: () => req('/extension/apply-policy'),
+  listApplications: () => req('/extension/applications'),
+  getPacket: (id) => req(`/extension/packet/${id}`),
   triggerApply: (applicationId, url) => req('/extension/trigger-apply', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

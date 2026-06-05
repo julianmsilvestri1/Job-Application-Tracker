@@ -16,7 +16,7 @@ test('getPacket targets the configured host and parses JSON', async () => {
     return { ok: true, status: 200, json: async () => ({ candidate: { fields: [] }, documents: [], answers: [] }) };
   };
   const p = await portal.getPacket(7);
-  assert.equal(called, 'http://localhost:4000/api/applications/7/packet');
+  assert.equal(called, 'http://localhost:4000/api/extension/packet/7');
   assert.ok(Array.isArray(p.documents));
 });
 

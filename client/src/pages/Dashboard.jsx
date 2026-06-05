@@ -36,6 +36,18 @@ export default function Dashboard() {
               <div className="lbl">{s}</div>
             </div>
           ))}
+          {stats.tasksDueSoon > 0 && (
+            <div className="stat">
+              <div className="num">{stats.tasksDueSoon}</div>
+              <div className="lbl">due soon</div>
+            </div>
+          )}
+          {stats.overdueTasks > 0 && (
+            <div className="stat">
+              <div className="num">{stats.overdueTasks}</div>
+              <div className="lbl">overdue</div>
+            </div>
+          )}
         </div>
       )}
 

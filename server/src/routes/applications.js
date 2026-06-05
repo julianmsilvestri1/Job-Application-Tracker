@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import db from '../db.js';
 import { recordEditIfAny } from '../services/answerMemory.js';
+import { seedTasks } from '../services/applyTaskTemplates.js';
 
 const router = Router();
 
@@ -61,15 +62,38 @@ router.get('/', (req, res) => {
   const rows = status
     ? db.prepare('SELECT * FROM applications WHERE status = ? ORDER BY updated_at DESC').all(status)
     : db.prepare('SELECT * FROM applications ORDER BY updated_at DESC').all();
-  res.json(rows.map((r) => ({ ...r, remote: Boolean(r.remote) })));
+  res.json(rows.map((r) => ({ ...r, remote: Boolean(r.remote), taskProgress: taskProgressFor(r.id) })));
 });
 
-// Counts per status for the dashboard.
+// Checklist progress for one application (Unit 2.2). Tolerant of the
+// not-yet-migrated table so it is safe to call before migration 9.
+function taskProgressFor(applicationId) {
+  if (!tableExists(db, 'application_tasks')) return { done: 0, total: 0 };
+  const row = db.prepare(
+    'SELECT COUNT(*) AS total, COALESCE(SUM(done), 0) AS done FROM application_tasks WHERE application_id = ?',
+  ).get(applicationId);
+  return { done: Number(row.done), total: Number(row.total) };
+}
+
+// Counts per status for the dashboard, plus checklist due-soon/overdue rollups.
 router.get('/stats', (req, res) => {
   const rows = db.prepare('SELECT status, COUNT(*) AS count FROM applications GROUP BY status').all();
   const stats = Object.fromEntries(VALID_STATUS.map((s) => [s, 0]));
   rows.forEach((r) => { stats[r.status] = r.count; });
   stats.total = Object.values(stats).reduce((a, b) => a + b, 0);
+
+  if (tableExists(db, 'application_tasks')) {
+    const open = "done = 0 AND due_date IS NOT NULL AND due_date != ''";
+    stats.tasksDueSoon = db.prepare(
+      `SELECT COUNT(*) AS n FROM application_tasks WHERE ${open} AND date(due_date) BETWEEN date('now') AND date('now', '+3 days')`,
+    ).get().n;
+    stats.overdueTasks = db.prepare(
+      `SELECT COUNT(*) AS n FROM application_tasks WHERE ${open} AND date(due_date) < date('now')`,
+    ).get().n;
+  } else {
+    stats.tasksDueSoon = 0;
+    stats.overdueTasks = 0;
+  }
   res.json(stats);
 });
 
@@ -107,6 +131,8 @@ router.post('/', (req, res) => {
     remote: b.remote ? 1 : 0, status, notes: b.notes || '',
     applied_at: status === 'applied' ? new Date().toISOString() : null,
   });
+  // Seed the default apply checklist (+ optional industry pack) for the new app.
+  seedTasks(db, info.lastInsertRowid, b.template_pack);
   res.status(201).json({ ...db.prepare('SELECT * FROM applications WHERE id = ?').get(info.lastInsertRowid), remote: Boolean(b.remote) });
 });
 
@@ -238,6 +264,66 @@ router.patch('/:id/documents/:documentId', (req, res) => {
 router.delete('/:id/documents/:documentId', (req, res) => {
   db.prepare('DELETE FROM application_documents WHERE application_id = ? AND document_id = ?')
     .run(Number(req.params.id), Number(req.params.documentId));
+  res.status(204).end();
+});
+
+// --- Apply checklist tasks (Unit 2.2) -------------------------------------
+const TASK_CATEGORIES = ['apply', 'document', 'form', 'follow_up', 'interview', 'networking', 'custom'];
+
+router.get('/:id/tasks', (req, res) => {
+  res.json(db.prepare(
+    'SELECT * FROM application_tasks WHERE application_id = ? ORDER BY sort_order, id',
+  ).all(Number(req.params.id)));
+});
+
+router.post('/:id/tasks', (req, res) => {
+  const id = Number(req.params.id);
+  const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
+  if (!app) return res.status(404).json({ error: 'Application not found' });
+  const b = req.body || {};
+  if (!b.label) return res.status(400).json({ error: 'A task label is required.' });
+  const maxOrder = db.prepare(
+    'SELECT COALESCE(MAX(sort_order), -1) AS m FROM application_tasks WHERE application_id = ?',
+  ).get(id).m;
+  const info = db.prepare(`
+    INSERT INTO application_tasks (application_id, label, done, due_date, category, source, sort_order)
+    VALUES (@application_id, @label, @done, @due_date, @category, @source, @sort_order)
+  `).run({
+    application_id: id,
+    label: b.label,
+    done: b.done ? 1 : 0,
+    due_date: b.due_date || null,
+    category: TASK_CATEGORIES.includes(b.category) ? b.category : 'custom',
+    source: b.source || 'manual',
+    sort_order: Number.isInteger(b.sort_order) ? b.sort_order : maxOrder + 1,
+  });
+  res.status(201).json(db.prepare('SELECT * FROM application_tasks WHERE id = ?').get(info.lastInsertRowid));
+});
+
+router.patch('/:id/tasks/:taskId', (req, res) => {
+  const id = Number(req.params.id);
+  const taskId = Number(req.params.taskId);
+  const task = db.prepare('SELECT * FROM application_tasks WHERE id = ? AND application_id = ?').get(taskId, id);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+
+  const b = req.body || {};
+  const fields = {};
+  if ('label' in b) fields.label = b.label;
+  if ('done' in b) fields.done = b.done ? 1 : 0;
+  if ('due_date' in b) fields.due_date = b.due_date || null;
+  if ('category' in b && TASK_CATEGORIES.includes(b.category)) fields.category = b.category;
+  if (Number.isInteger(b.sort_order)) fields.sort_order = b.sort_order;
+  if (Object.keys(fields).length) {
+    const set = Object.keys(fields).map((k) => `${k} = @${k}`).join(', ');
+    db.prepare(`UPDATE application_tasks SET ${set}, updated_at = datetime('now') WHERE id = @taskId`)
+      .run({ ...fields, taskId });
+  }
+  res.json(db.prepare('SELECT * FROM application_tasks WHERE id = ?').get(taskId));
+});
+
+router.delete('/:id/tasks/:taskId', (req, res) => {
+  db.prepare('DELETE FROM application_tasks WHERE id = ? AND application_id = ?')
+    .run(Number(req.params.taskId), Number(req.params.id));
   res.status(204).end();
 });
 

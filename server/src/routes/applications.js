@@ -3,6 +3,7 @@ import db from '../db.js';
 import { recordEditIfAny } from '../services/answerMemory.js';
 import { seedTasks, mergeSuggestedTasks } from '../services/applyTaskTemplates.js';
 import { applyPlan as generateApplyPlan } from '../services/ai/orchestrator.js';
+import { buildPacket } from '../services/apply/packet.js';
 
 const router = Router();
 
@@ -128,6 +129,15 @@ router.get('/:id', (req, res) => {
   const row = db.prepare('SELECT * FROM applications WHERE id = ?').get(Number(req.params.id));
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json(serializeApplication(db, row));
+});
+
+// Application packet — the canonical autofill/auto-apply contract (Unit 2.4).
+// Raw resume text is omitted unless ?includeResumeText=true.
+router.get('/:id/packet', (req, res) => {
+  const row = db.prepare('SELECT * FROM applications WHERE id = ?').get(Number(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  const includeResumeText = req.query.includeResumeText === 'true' || req.query.includeResumeText === '1';
+  res.json(buildPacket(db, row, { includeResumeText }));
 });
 
 // Save a job (from search) or create a manual entry.

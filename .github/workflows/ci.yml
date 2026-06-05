@@ -24,6 +24,7 @@ jobs:
             package-lock.json
             server/package-lock.json
             client/package-lock.json
+            extension-safari/package-lock.json
 
       - name: Install dependencies
         run: npm run install:all

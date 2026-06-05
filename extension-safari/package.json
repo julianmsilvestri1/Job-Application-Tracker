@@ -1,0 +1,14 @@
+{
+  "name": "job-apply-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared core for the Job Apply browser extension (Chrome MV3 + Safari Web Extension).",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node build.mjs && node --test"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0"
+  }
+}

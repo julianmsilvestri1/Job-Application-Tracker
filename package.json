@@ -5,14 +5,15 @@
   "description": "A tailored job application portal: search jobs across multiple boards, autofill applications from your saved profile, generate tailored cover letters, and track every application.",
   "type": "module",
   "scripts": {
-    "install:all": "npm install && npm install --prefix server && npm install --prefix client",
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client && npm install --prefix extension-safari",
     "dev": "concurrently -n server,client -c blue,green \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
     "build": "npm run build --prefix client",
     "start": "npm run start --prefix server",
     "pretest": "npm install --prefix client --no-audit --no-fund 2>/dev/null || true",
-    "test": "npm run test --prefix server && npm run test --prefix client",
+    "build:extension": "npm run build --prefix extension-safari",
+    "test": "npm run test --prefix server && npm run test --prefix client && npm run test --prefix extension-safari",
     "lint": "eslint . --max-warnings 0"
   },
   "devDependencies": {

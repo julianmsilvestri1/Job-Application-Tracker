@@ -77,6 +77,15 @@ export const api = {
   triggerApply: (applicationId, url) =>
     request('/extension/trigger-apply', { method: 'POST', body: JSON.stringify({ applicationId, url }) }),
 
+  // Apply session events (Phase 2.7)
+  getEvents: (applicationId) => request(`/applications/${applicationId}/events`),
+  addEvent: (applicationId, b) =>
+    request(`/applications/${applicationId}/events`, { method: 'POST', body: JSON.stringify(b) }),
+  markSubmitted: (applicationId) =>
+    request(`/applications/${applicationId}/mark-submitted`, { method: 'POST' }),
+  clearReview: (applicationId) =>
+    request(`/applications/${applicationId}/clear-review`, { method: 'POST' }),
+
   // Answers (Q&A)
   getAnswers: (applicationId) => request(`/applications/${applicationId}/answers`),
   saveAnswerForApp: (applicationId, b) =>

@@ -4,6 +4,7 @@ import { recordEditIfAny } from '../services/answerMemory.js';
 import { seedTasks, mergeSuggestedTasks } from '../services/applyTaskTemplates.js';
 import { applyPlan as generateApplyPlan } from '../services/ai/orchestrator.js';
 import { buildPacket } from '../services/apply/packet.js';
+import { logEvent, recordSubmitted, clearReview, EVENT_KINDS } from '../services/apply/events.js';
 
 const router = Router();
 
@@ -69,10 +70,11 @@ export function serializeApplication(database, row) {
   return {
     ...row,
     remote: Boolean(row.remote),
+    needs_review: Boolean(row.needs_review),
     documents: attachedDocuments(database, row.id),
     tasks: childRows(database, 'application_tasks', row.id, 'sort_order, id'),
     answers: childRows(database, 'application_answers', row.id, 'created_at DESC'),
-    events: childRows(database, 'application_events', row.id, 'created_at DESC'),
+    events: childRows(database, 'application_events', row.id, 'created_at DESC, id DESC'),
     applyPlan,
   };
 }
@@ -87,6 +89,7 @@ router.get('/', (req, res) => {
   res.json(rows.map((r) => ({
     ...r,
     remote: Boolean(r.remote),
+    needs_review: Boolean(r.needs_review),
     taskProgress: progress.get(r.id) || { done: 0, total: 0 },
   })));
 });
@@ -407,6 +410,46 @@ router.post('/:id/apply-plan', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// --- Apply session events (Unit 2.7) --------------------------------------
+router.get('/:id/events', (req, res) => {
+  res.json(db.prepare(
+    'SELECT * FROM application_events WHERE application_id = ? ORDER BY created_at DESC, id DESC',
+  ).all(Number(req.params.id)));
+});
+
+router.post('/:id/events', (req, res) => {
+  const id = Number(req.params.id);
+  const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
+  if (!app) return res.status(404).json({ error: 'Application not found' });
+  const b = req.body || {};
+  if (!b.kind) return res.status(400).json({ error: 'An event kind is required.' });
+  if (!EVENT_KINDS.includes(b.kind)) {
+    return res.status(400).json({ error: `Unknown event kind. Allowed: ${EVENT_KINDS.join(', ')}.` });
+  }
+  res.status(201).json(logEvent(db, id, {
+    kind: b.kind, source: b.source || 'portal', summary: b.summary, metadata: b.metadata,
+  }));
+});
+
+// Mark an application as submitted (status → applied, complete Submit task, log
+// the event) — atomically.
+router.post('/:id/mark-submitted', (req, res) => {
+  const id = Number(req.params.id);
+  const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
+  if (!app) return res.status(404).json({ error: 'Application not found' });
+  recordSubmitted(db, id, { source: 'portal' });
+  res.json(serializeApplication(db, db.prepare('SELECT * FROM applications WHERE id = ?').get(id)));
+});
+
+// Clear the auto-apply human-review flag after a person has handled it.
+router.post('/:id/clear-review', (req, res) => {
+  const id = Number(req.params.id);
+  const app = db.prepare('SELECT id FROM applications WHERE id = ?').get(id);
+  if (!app) return res.status(404).json({ error: 'Application not found' });
+  clearReview(db, id, { source: 'portal' });
+  res.json(serializeApplication(db, db.prepare('SELECT * FROM applications WHERE id = ?').get(id)));
 });
 
 export default router;

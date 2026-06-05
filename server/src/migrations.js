@@ -284,6 +284,34 @@ export const migrations = [
       CREATE INDEX IF NOT EXISTS idx_ats_host ON ats_field_mappings(host);
     `);
   },
+
+  // --- Migration 12: apply session events (Unit 2.7) -----------------------
+  // Auditable timeline of apply work (created/packet_opened/autofill_run/
+  // task_done/submitted/note). Never stores external form field values.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS application_events (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        application_id INTEGER,
+        kind           TEXT NOT NULL,            -- created | packet_opened | autofill_run | task_done | submitted | note
+        source         TEXT DEFAULT 'portal',    -- portal | extension | system
+        summary        TEXT DEFAULT '',
+        metadata       TEXT DEFAULT '{}',        -- JSON; counts/hostname only, never field values
+        created_at     TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_app_events_application ON application_events(application_id);
+    `);
+  },
+
+  // --- Migration 13: human-review flag for auto-apply (Unit 2.7+) ----------
+  // When the autonomous apply runner can't fully complete OR can't verify its
+  // own fills, it leaves the application flagged for human review instead of
+  // submitting a wrong/partial form.
+  (db) => {
+    addColumn(db, 'applications', 'needs_review', 'INTEGER DEFAULT 0');
+    addColumn(db, 'applications', 'review_summary', "TEXT DEFAULT ''");
+  },
 ];
 
 export function runMigrations(db) {

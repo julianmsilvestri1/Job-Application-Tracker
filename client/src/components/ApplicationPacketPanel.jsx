@@ -19,7 +19,7 @@ function summarizeSkips(details) {
   return parts.length ? `Skipped: ${parts.join(', ')}.` : '';
 }
 
-export default function ApplicationPacketPanel({ applicationId, application }) {
+export default function ApplicationPacketPanel({ applicationId, application, onChanged }) {
   const [packet, setPacket] = useState(null);
   const [busy, setBusy] = useState(false);
   const [run, setRun] = useState(null);
@@ -39,7 +39,10 @@ export default function ApplicationPacketPanel({ applicationId, application }) {
     try {
       const summary = await api.triggerApply(applicationId, application.url);
       setRun(summary);
-      toast(summary.submitted ? 'Submitted' : `Filled ${summary.filledCount} field(s)`, 'success');
+      if (summary.submitted) toast('Submitted ✓', 'success');
+      else if (summary.reviewReason) toast(`Paused for review — ${summary.reviewReason}`, 'error');
+      else toast(`Filled ${summary.filledCount} field(s)`, 'success');
+      onChanged?.(); // refresh the workspace so the review flag + activity show
     } catch (e) {
       toast(e.message, 'error');
     } finally {

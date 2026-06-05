@@ -11,7 +11,10 @@ export default function ApplicationCard({ app, onOpen, onChangeStatus, onSaveNot
           <h3 className="job-title">{app.title || '(untitled role)'}</h3>
           <div className="job-company">{app.company} {app.location && `· ${app.location}`}</div>
         </div>
-        <span className={`badge ${app.status}`}>{app.status}</span>
+        <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+          {app.needs_review && <span className="badge rejected" title={app.review_summary || 'Needs human review'}>⚠ review</span>}
+          <span className={`badge ${app.status}`}>{app.status}</span>
+        </div>
       </div>
       <div className="job-meta">
         {app.source && <span className="badge source">{app.source}</span>}

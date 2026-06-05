@@ -110,11 +110,19 @@ export function syncEmbeddings(db = defaultDb) {
  * Retrieve the top-k knowledge chunks most relevant to `query`.
  * Reconciles first so results reflect current data. Returns [] when embeddings
  * are unavailable or there's nothing indexed (callers fall back to full context).
+ *
+ * `opts.resumeDocumentIds` scopes resume evidence to a specific application's
+ * attached resume variant (Unit 2.1/2.7): when provided, `resume_chunk` rows are
+ * restricted to those document ids; all other source types are kept.
  */
-export function retrieve(db = defaultDb, query = '', k = 5) {
+export function retrieve(db = defaultDb, query = '', k = 5, { resumeDocumentIds = null } = {}) {
   if (!available() || !query.trim()) return [];
   syncEmbeddings(db);
-  const rows = db.prepare('SELECT source_type, source_id, text_chunk, embedding, weight FROM embeddings').all();
+  let rows = db.prepare('SELECT source_type, source_id, text_chunk, embedding, weight FROM embeddings').all();
+  if (Array.isArray(resumeDocumentIds) && resumeDocumentIds.length) {
+    const allow = new Set(resumeDocumentIds.map(Number));
+    rows = rows.filter((r) => r.source_type !== 'resume_chunk' || allow.has(Number(r.source_id)));
+  }
   if (rows.length === 0) return [];
   const q = embed(query);
   const candidates = rows.map((r) => ({ ...r, embedding: fromBlob(r.embedding) }));

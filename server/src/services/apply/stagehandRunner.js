@@ -57,7 +57,10 @@ export function resolveSelectAnswer(value, options) {
   const exact = options.find(matchesExact);
   if (exact) return optionValue(exact);
 
-  const word = (hay, needle) => new RegExp(`\\b${escapeRegex(needle)}\\b`).test(hay);
+  // Whole-token match with symbol-aware boundaries so values like ".NET", "C++"
+  // and "C#" match (plain \b would fail at the leading/trailing symbol). Inputs
+  // are already normalized (lowercased).
+  const word = (hay, needle) => new RegExp(`(?<![a-z0-9_.+#])${escapeRegex(needle)}(?![a-z0-9_.+#])`).test(hay);
   // value as a whole word inside an option label/value ("Citizen" → "U.S. Citizen")
   const inOption = options.find((o) => word(norm(optionLabel(o)), v) || word(norm(optionValue(o)), v));
   if (inOption) return optionValue(inOption);

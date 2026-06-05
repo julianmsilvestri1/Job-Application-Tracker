@@ -44,6 +44,13 @@ test('resolveSelectAnswer matches exact/whole-word and never invents a value', (
   assert.equal(resolveSelectAnswer('No', ['Yes', 'Norway']), null); // never maps "No" → "Norway"
 });
 
+test('resolveSelectAnswer matches symbol-bearing skills as whole tokens (.NET, C++, C#)', () => {
+  assert.equal(resolveSelectAnswer('.NET', ['Java', '.NET Core']), '.NET Core');
+  assert.equal(resolveSelectAnswer('C++', ['Java', 'C++ (advanced)']), 'C++ (advanced)');
+  assert.equal(resolveSelectAnswer('C#', ['Java', 'C# / .NET']), 'C# / .NET');
+  assert.equal(resolveSelectAnswer('No', ['Yes', 'Norway']), null); // no symbol-boundary regression
+});
+
 test('isRedacted catches varied EEO/PII phrasing without false positives', () => {
   assert.ok(isRedacted('Social Security Number'));
   assert.ok(isRedacted('Gender'));
@@ -52,10 +59,17 @@ test('isRedacted catches varied EEO/PII phrasing without false positives', () =>
   assert.ok(isRedacted('Your age'));
   assert.ok(isRedacted('Sex'));
   assert.ok(isRedacted('Marital status'));
+  assert.ok(isRedacted('What is your national origin?'));
+  assert.ok(isRedacted('Citizenship status'));
+  assert.ok(isRedacted('Do you require accommodations due to an impairment?'));
+  assert.ok(isRedacted('Are you disabled?'));
+  assert.ok(isRedacted('Military status'));
   assert.ok(!isRedacted('Full name'));
-  assert.ok(!isRedacted('Message'));       // "age" inside "Message" must not trip
-  assert.ok(!isRedacted('Manager name'));  // "Manager" must not match "age"
-  assert.ok(!isRedacted('Essex County'));  // "sex" inside "Essex" must not trip
+  assert.ok(!isRedacted('Message'));        // "age" inside "Message" must not trip
+  assert.ok(!isRedacted('Manager name'));   // "Manager" must not match "age"
+  assert.ok(!isRedacted('Essex County'));   // "sex" inside "Essex" must not trip
+  assert.ok(!isRedacted('React Native developer')); // "native" is not a trigger
+  assert.ok(!isRedacted('Relocation accommodation')); // bare "accommodation" is not a trigger
 });
 
 test('resolveField fills from packet, maps selects, and refuses redacted/unknown fields', () => {

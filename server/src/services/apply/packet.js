@@ -14,9 +14,13 @@ export const REDACTED_FIELDS = [
 // "Do you have a disability?"). Broader than the display list above; matched
 // with word boundaries so substrings like "age" in "Message" never trip.
 export const REDACTED_MATCH = [
-  'ssn', 'social security', 'eeo', 'race', 'ethnicity', 'ethnic', 'gender',
-  'sex', 'sexual orientation', 'disability', 'veteran', 'marital',
+  'ssn', 'social security', 'eeo', 'race', 'ethnicity', 'ethnic',
+  'national origin', 'citizenship', 'gender', 'sex', 'sexual orientation',
+  'disability', 'disabled', 'impairment', 'handicap', 'veteran', 'military',
+  'armed forces', 'marital', 'indigenous', 'visible minority',
   'date of birth', 'birthdate', 'birth date', 'age',
+  // Deliberately NOT included (false-positive risk): "native" (React Native /
+  // "native English"), bare "minority"/"accommodation".
 ];
 
 // Profile-derived autofill fields with form aliases + a sensitivity tag.

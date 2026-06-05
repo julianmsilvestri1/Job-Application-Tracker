@@ -50,9 +50,12 @@ test('isRedacted catches varied EEO/PII phrasing without false positives', () =>
   assert.ok(isRedacted('Are you a protected veteran?'));
   assert.ok(isRedacted('Do you have a disability?'));
   assert.ok(isRedacted('Your age'));
+  assert.ok(isRedacted('Sex'));
+  assert.ok(isRedacted('Marital status'));
   assert.ok(!isRedacted('Full name'));
-  assert.ok(!isRedacted('Message'));      // "age" inside "Message" must not trip
-  assert.ok(!isRedacted('Manager name')); // "Manager" must not match "age"
+  assert.ok(!isRedacted('Message'));       // "age" inside "Message" must not trip
+  assert.ok(!isRedacted('Manager name'));  // "Manager" must not match "age"
+  assert.ok(!isRedacted('Essex County'));  // "sex" inside "Essex" must not trip
 });
 
 test('resolveField fills from packet, maps selects, and refuses redacted/unknown fields', () => {
@@ -184,6 +187,48 @@ test('runApply does not auto-submit when a required field is left unmet', async 
   assert.equal(r.submitted, false, 'an incomplete required form is not auto-submitted');
   assert.ok(!acts.some((a) => a.submit), 'submit action is never issued');
   assert.ok(acts.some((a) => a.field && a.field.label === 'Full name'), 'still fills what it can');
+  db.close();
+});
+
+test('runApply flags for review when the verification re-read itself fails', async () => {
+  const db = freshDb();
+  const appId = seedApp(db);
+  db.prepare('UPDATE apply_settings SET auto_submit = 1 WHERE id = 1').run();
+  const fields = [{ label: 'Full name', type: 'text' }];
+  let calls = 0;
+  const browser = {
+    acts: [],
+    async extract() { calls += 1; if (calls === 2) throw new Error('DOM detached'); return fields; },
+    async act(a) { this.acts.push(a); },
+    async close() {},
+  };
+  const r = await runApply({ applicationId: appId, url: 'https://x.test/a', db, stagehandFactory: async () => browser });
+  assert.equal(r.verified, false);
+  assert.equal(r.submitted, false, 'a failed verify read is treated as unverified, never submitted');
+  assert.ok(/did not verify/.test(r.reviewReason));
+  assert.ok(!browser.acts.some((a) => a.submit));
+  db.close();
+});
+
+test('verification matches fields by stable name even if the label changes on re-read', async () => {
+  const db = freshDb();
+  const appId = seedApp(db);
+  db.prepare('UPDATE apply_settings SET auto_submit = 1 WHERE id = 1').run();
+  const values = new Map();
+  let calls = 0;
+  const browser = {
+    acts: [],
+    async extract() {
+      calls += 1;
+      if (calls === 1) return [{ label: 'Full name', name: 'fullName', type: 'text' }];
+      return [{ label: 'Your name', name: 'fullName', type: 'text', currentValue: values.get('fullName') }];
+    },
+    async act(a) { this.acts.push(a); if (a.field) values.set(a.field.name, a.answer); },
+    async close() {},
+  };
+  const r = await runApply({ applicationId: appId, url: 'https://x.test/a', db, stagehandFactory: async () => browser });
+  assert.equal(r.verified, true, 'matched by name despite the label changing on re-read');
+  assert.equal(r.submitted, true);
   db.close();
 });
 

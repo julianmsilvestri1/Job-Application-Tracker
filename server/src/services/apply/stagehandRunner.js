@@ -31,8 +31,13 @@ const optionLabel = (o) => (typeof o === 'string' ? o : (o?.label ?? o?.value ??
 
 function optionsHash(options) {
   if (!Array.isArray(options) || options.length === 0) return '';
-  return sha(options.map((o) => `${norm(optionLabel(o))}=${norm(optionValue(o))}`).join('|'));
+  // Sorted so the hash is stable regardless of the order extract() returns options.
+  return sha(options.map((o) => `${norm(optionLabel(o))}=${norm(optionValue(o))}`).sort().join('|'));
 }
+
+// A stable identity for matching a field across two extract() passes. Prefer
+// name/id (stable) over label (can shift / duplicate on dynamic forms).
+const fieldKey = (f) => norm(f?.name || f?.id || f?.label);
 
 // A field whose label touches a redacted/EEO category must never be fabricated.
 // Whole-word matching catches varied phrasing without false positives.
@@ -163,8 +168,12 @@ async function defaultStagehandFactory({ cdpUrl, url }) {
       return res?.fields || [];
     },
     async act({ field, answer, submit }) {
+      // NOTE: this real-Stagehand adapter is not exercisable in CI (needs a live
+      // Chrome+CDP) — validate it against the installed Stagehand version before
+      // production use. Labels/answers are JSON-quoted so quotes/newlines in the
+      // value don't break the instruction string.
       if (submit) return page.act('click the submit application button');
-      return page.act(`set the "${field.label}" field to "${answer}"`);
+      return page.act(`Set the ${JSON.stringify(field.label)} field to ${JSON.stringify(String(answer))}.`);
     },
     async close() { await sh.close(); },
   };
@@ -229,18 +238,21 @@ export async function runApply({ applicationId, url, db = defaultDb, stagehandFa
       details.push({ label: field.label, action: 'filled', strategy: resolved.strategy });
     }
 
-    // Double-check: re-read the form and verify each fill landed correctly.
-    // Only resolutions that VERIFY are learned into the semantic cache — an
-    // unverified fill must not poison future runs.
-    const after = (await sh.extract()) || [];
-    const afterValue = new Map(after.map((f) => [f.label, f.currentValue]));
+    // Double-check: re-read the form and verify each fill landed correctly,
+    // matching by a stable key (name/id, then label). If the re-read itself
+    // fails, treat every fill as unverified (→ flag) rather than throwing.
+    // Only resolutions that VERIFY are learned into the semantic cache.
+    let after;
+    try { after = (await sh.extract()) || []; } catch { after = null; }
+    const afterValue = new Map((after || []).map((f) => [fieldKey(f), f.currentValue]));
     let unverified = 0;
     for (const { field, answer, resolved } of intendedFills) {
-      if (verifyFill(field, answer, afterValue.get(field.label))) {
+      const ok = after !== null && verifyFill(field, answer, afterValue.get(fieldKey(field)));
+      if (ok) {
         if (resolved.strategy !== 'cache') learnMapping(db, host, field, resolved);
       } else {
         unverified += 1;
-        details.push({ label: field.label, action: 'unverified', reason: 'value_mismatch' });
+        details.push({ label: field.label, action: 'unverified', reason: after === null ? 'verify_read_failed' : 'value_mismatch' });
       }
     }
     const verified = unverified === 0;

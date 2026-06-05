@@ -15,8 +15,8 @@ export const REDACTED_FIELDS = [
 // with word boundaries so substrings like "age" in "Message" never trip.
 export const REDACTED_MATCH = [
   'ssn', 'social security', 'eeo', 'race', 'ethnicity', 'ethnic', 'gender',
-  'sexual orientation', 'disability', 'veteran', 'date of birth', 'birthdate',
-  'birth date', 'age',
+  'sex', 'sexual orientation', 'disability', 'veteran', 'marital',
+  'date of birth', 'birthdate', 'birth date', 'age',
 ];
 
 // Profile-derived autofill fields with form aliases + a sensitivity tag.

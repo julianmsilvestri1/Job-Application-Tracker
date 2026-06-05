@@ -11,9 +11,15 @@ export default function ApplicationsList({
     <div>
       <div className="tabs">
         {STATUSES.map((s) => (
-          <div key={s} className={`tab ${filter === s ? 'active' : ''}`} onClick={() => setFilter(s)}>
+          <button
+            type="button"
+            key={s}
+            className={`tab ${filter === s ? 'active' : ''}`}
+            aria-pressed={filter === s}
+            onClick={() => setFilter(s)}
+          >
             {s}
-          </div>
+          </button>
         ))}
       </div>
 

@@ -93,6 +93,15 @@ $('apply').addEventListener('click', async () => {
     setStatus(e.message, 'error');
   }
 });
-$('options').addEventListener('click', () => api.runtime.openOptionsPage());
+$('options').addEventListener('click', () => {
+  // openOptionsPage isn't available on every engine (e.g. Safari on iPad);
+  // fall back to opening the options page in a tab.
+  try {
+    if (api.runtime?.openOptionsPage) api.runtime.openOptionsPage();
+    else api.tabs.create({ url: api.runtime.getURL('options.html') });
+  } catch {
+    api.tabs?.create?.({ url: api.runtime.getURL('options.html') });
+  }
+});
 
 init();

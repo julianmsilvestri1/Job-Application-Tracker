@@ -25,7 +25,7 @@ test('runMigrations brings a fresh db to the latest version', () => {
   const tables = tableNames(db);
   for (const t of [
     'profile', 'experiences', 'education', 'documents', 'applications',
-    'application_answers', 'job_scores', 'search_preferences',
+    'application_answers', 'job_scores', 'search_preferences', 'ats_field_mappings',
   ]) {
     assert.ok(tables.includes(t), `expected table ${t}`);
   }

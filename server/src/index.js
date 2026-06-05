@@ -14,6 +14,8 @@ import applicationsRouter from './routes/applications.js';
 import answersRouter from './routes/answers.js';
 import assistantRouter from './routes/assistant.js';
 import preferencesRouter from './routes/preferences.js';
+import extensionMappingsRouter from './routes/extensionMappings.js';
+import { extensionCors } from './middleware/extensionCors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -30,6 +32,7 @@ app.use('/api/applications', applicationsRouter);
 app.use('/api/answers', answersRouter);
 app.use('/api/assistant', assistantRouter);
 app.use('/api/preferences', preferencesRouter);
+app.use('/api/extension/mappings', extensionCors, extensionMappingsRouter);
 
 // Serve the built client in production (npm run build && npm start).
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');

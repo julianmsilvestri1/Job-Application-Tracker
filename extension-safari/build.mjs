@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 
-const ENTRIES = ['content.js', 'popup.js', 'options.js'];
+const ENTRIES = ['content.js', 'popup.js', 'options.js', 'background.js'];
 const STATIC = ['popup.html', 'options.html'];
 const TARGETS = [
   { name: 'chrome', manifest: 'manifest.chrome.json' },

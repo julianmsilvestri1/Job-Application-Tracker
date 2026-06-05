@@ -1,6 +1,7 @@
 // Options page: configure the portal URL and test the connection.
 import { getSettings, setSettings } from './shared/storage.js';
 import { portal } from './shared/portalClient.js';
+import { diagnoseConnection } from './shared/connection.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -15,13 +16,14 @@ $('save').addEventListener('click', async () => {
 });
 
 $('test').addEventListener('click', async () => {
+  const url = $('portalUrl').value.trim();
   $('status').textContent = 'Testing…';
   try {
-    await setSettings({ portalUrl: $('portalUrl').value.trim() });
+    await setSettings({ portalUrl: url });
     await portal.testConnection();
     $('status').textContent = 'Connected ✓';
   } catch (e) {
-    $('status').textContent = `Failed: ${e.message}`;
+    $('status').textContent = diagnoseConnection(url, e);
   }
 });
 

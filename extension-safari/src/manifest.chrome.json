@@ -5,6 +5,9 @@
   "description": "Preview/copy your application packet and trigger autonomous apply from the Job Apply portal.",
   "permissions": ["activeTab", "storage", "tabs"],
   "host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "Job Apply",
     "default_popup": "popup.html"

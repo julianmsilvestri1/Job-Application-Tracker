@@ -11,13 +11,14 @@ test('builds both chrome and safari targets with all assets', async () => {
   assert.deepEqual(names, ['chrome', 'safari']);
 
   for (const target of names) {
-    for (const f of ['content.js', 'popup.js', 'options.js', 'popup.html', 'options.html', 'manifest.json']) {
+    for (const f of ['content.js', 'popup.js', 'options.js', 'background.js', 'popup.html', 'options.html', 'manifest.json']) {
       const buf = await readFile(dist(`${target}/${f}`), 'utf8');
       assert.ok(buf.length > 0, `${target}/${f} should be non-empty`);
     }
     const manifest = JSON.parse(await readFile(dist(`${target}/manifest.json`), 'utf8'));
     assert.equal(manifest.manifest_version, 3);
     assert.equal(manifest.action.default_popup, 'popup.html');
+    assert.equal(manifest.background.service_worker, 'background.js');
   }
 });
 

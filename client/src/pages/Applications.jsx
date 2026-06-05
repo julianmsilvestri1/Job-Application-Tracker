@@ -24,17 +24,23 @@ export default function Applications() {
   }, [toast]);
 
   async function changeStatus(app, status) {
-    await api.updateApplication(app.id, { status });
-    load(); notify(`Moved to ${status}`);
+    try {
+      await api.updateApplication(app.id, { status });
+      load(); notify(`Moved to ${status}`);
+    } catch (e) { toast(e.message, 'error'); }
   }
   async function saveNotes(app, notes) {
-    await api.updateApplication(app.id, { notes });
+    try {
+      await api.updateApplication(app.id, { notes });
+    } catch (e) { toast(e.message, 'error'); }
   }
   async function remove(id) {
     if (!confirm('Remove this application from your tracker?')) return;
-    await api.deleteApplication(id);
-    if (selectedId === id) setSelectedId(null);
-    load();
+    try {
+      await api.deleteApplication(id);
+      if (selectedId === id) setSelectedId(null);
+      load();
+    } catch (e) { toast(e.message, 'error'); }
   }
 
   return (

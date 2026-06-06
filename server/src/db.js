@@ -10,6 +10,11 @@ fs.mkdirSync(dataDir, { recursive: true });
 
 const db = new Database(path.join(dataDir, 'app.db'));
 db.pragma('journal_mode = WAL');
+// Wait for the write lock instead of failing with SQLITE_BUSY. WAL allows only
+// one writer at a time, so concurrent writers (parallel `node --test` processes
+// running migrations at import, or concurrent requests in prod) would otherwise
+// error immediately. Migrations are idempotent, so serialized runs are safe.
+db.pragma('busy_timeout = 5000');
 db.pragma('foreign_keys = ON');
 
 // Schema lives in versioned migrations (see migrations.js).

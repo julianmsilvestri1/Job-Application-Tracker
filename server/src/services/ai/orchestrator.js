@@ -1,6 +1,13 @@
-// Single entry point for all Claude usage. No route or service calls the
-// Anthropic API directly — they go through the task functions here, each of
+// Single entry point for all AI usage. No route or service calls a model
+// provider directly — they go through the task functions here, each of
 // which has a deterministic fallback so the app works with no API key.
+//
+// Provider priority: Gemini (free tier) first when GEMINI_API_KEY is set,
+// then Anthropic when ANTHROPIC_API_KEY is set (kept for anyone who wants to
+// use their own paid key), then the free template/heuristic fallback below.
+// A Gemini failure (quota cap, rate limit, bad response) is never retried
+// against Anthropic — that would silently reintroduce a paid call the user
+// didn't ask for — it goes straight to the free fallback instead.
 //
 // DB access is dependency-injected (defaults to the app singleton) so the
 // tasks can be unit-tested against an in-memory database.
@@ -15,6 +22,7 @@ import {
 } from './heuristics.js';
 import { retrieve } from './indexer.js';
 import { embed, cosineSimilarity, available as embeddingsAvailable } from './embeddings.js';
+import { completeGemini, geminiEnabled } from './providers/gemini.js';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
@@ -50,7 +58,7 @@ export function clearAiCache() {
 }
 
 export function aiEnabled() {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return Boolean(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
 }
 
 // --- Context building ------------------------------------------------------
@@ -162,10 +170,18 @@ export async function buildCandidateContext({
   };
 }
 
-// --- Low-level Claude call -------------------------------------------------
+// --- Low-level model calls --------------------------------------------------
+
+// Routes to whichever provider is configured, Gemini first. Returns text, or
+// (when jsonSchema is given) the parsed result object — same contract either
+// way, so every task function below stays provider-agnostic.
+async function complete({ system, user, maxTokens = 800, jsonSchema = null }) {
+  if (geminiEnabled()) return completeGemini({ system, user, maxTokens, jsonSchema });
+  return completeAnthropic({ system, user, maxTokens, jsonSchema });
+}
 
 // Returns text, or (when jsonSchema is given) the parsed tool input object.
-async function complete({ system, user, maxTokens = 800, jsonSchema = null }) {
+async function completeAnthropic({ system, user, maxTokens = 800, jsonSchema = null }) {
   const body = {
     model: MODEL,
     max_tokens: maxTokens,

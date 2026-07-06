@@ -15,6 +15,7 @@ import {
   planQueries,
   jobKey,
 } from './orchestrator.js';
+import { resetGeminiCallCounter } from './providers/gemini.js';
 
 function seedDb({ resume } = {}) {
   const db = new Database(':memory:');
@@ -34,12 +35,16 @@ function seedDb({ resume } = {}) {
 }
 
 const realKey = process.env.ANTHROPIC_API_KEY;
+const realGeminiKey = process.env.GEMINI_API_KEY;
 const realFetch = global.fetch;
 afterEach(() => {
   if (realKey === undefined) delete process.env.ANTHROPIC_API_KEY;
   else process.env.ANTHROPIC_API_KEY = realKey;
+  if (realGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
+  else process.env.GEMINI_API_KEY = realGeminiKey;
   global.fetch = realFetch;
   clearAiCache();
+  resetGeminiCallCounter();
 });
 
 test('formatCandidateContext includes profile and resume text', () => {
@@ -142,9 +147,82 @@ test('coverLetter falls back to template if the API errors', async () => {
 
 test('aiEnabled reflects the env var', () => {
   delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.GEMINI_API_KEY;
   assert.equal(aiEnabled(), false);
   process.env.ANTHROPIC_API_KEY = 'x';
   assert.equal(aiEnabled(), true);
+  delete process.env.ANTHROPIC_API_KEY;
+  process.env.GEMINI_API_KEY = 'x';
+  assert.equal(aiEnabled(), true);
+});
+
+// --- Gemini provider priority -----------------------------------------------
+
+test('coverLetter uses Gemini when GEMINI_API_KEY is set, even if ANTHROPIC_API_KEY is also set', async () => {
+  process.env.GEMINI_API_KEY = 'gemini-test-key';
+  process.env.ANTHROPIC_API_KEY = 'anthropic-test-key';
+  const db = seedDb();
+  let calledUrl = '';
+  global.fetch = async (url) => {
+    calledUrl = url;
+    return {
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'Gemini letter' }] } }] }),
+    };
+  };
+  const r = await coverLetter({ job: { title: 'Eng', company: 'Acme' }, db });
+  assert.equal(r.source, 'ai');
+  assert.equal(r.text, 'Gemini letter');
+  assert.match(calledUrl, /generativelanguage\.googleapis\.com/);
+  assert.match(calledUrl, /gemini-2\.5-pro/);
+});
+
+test('coverLetter steps down to the next Gemini model on a 429 and still succeeds', async () => {
+  process.env.GEMINI_API_KEY = 'gemini-test-key';
+  delete process.env.ANTHROPIC_API_KEY;
+  const db = seedDb();
+  const urls = [];
+  global.fetch = async (url) => {
+    urls.push(url);
+    if (url.includes('gemini-2.5-pro')) return { ok: false, status: 429, text: async () => 'quota exceeded' };
+    return {
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'Flash letter' }] } }] }),
+    };
+  };
+  const r = await coverLetter({ job: { title: 'Eng', company: 'Acme' }, db });
+  assert.equal(r.source, 'ai');
+  assert.equal(r.text, 'Flash letter');
+  assert.equal(urls.length, 2);
+  assert.match(urls[1], /gemini-2\.5-flash/);
+});
+
+test('coverLetter falls back to the free template when Gemini has no key and Anthropic has no key', async () => {
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  const db = seedDb();
+  const r = await coverLetter({ job: { title: 'Eng', company: 'Acme' }, db });
+  assert.equal(r.source, 'template');
+});
+
+test('coverLetter falls back to the free template once the Gemini daily call cap is reached (never falls through to Anthropic)', async () => {
+  process.env.GEMINI_API_KEY = 'gemini-test-key';
+  process.env.ANTHROPIC_API_KEY = 'anthropic-test-key';
+  process.env.GEMINI_DAILY_CALL_CAP = '1';
+  const db = seedDb();
+  let anthropicWasCalled = false;
+  global.fetch = async (url) => {
+    if (typeof url === 'string' && url.includes('api.anthropic.com')) anthropicWasCalled = true;
+    return {
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'Gemini letter' }] } }] }),
+    };
+  };
+  await coverLetter({ job: { title: 'Eng', company: 'Acme' }, db, refresh: true });
+  const r = await coverLetter({ job: { title: 'Eng', company: 'Other' }, db, refresh: true });
+  delete process.env.GEMINI_DAILY_CALL_CAP;
+  assert.equal(r.source, 'template');
+  assert.equal(anthropicWasCalled, false, 'a Gemini cap hit must never fall through to a paid Anthropic call');
 });
 
 test('answerQuestion returns a useful template without a key (1.5.4)', async () => {
